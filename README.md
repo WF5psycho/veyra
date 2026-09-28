@@ -14,7 +14,7 @@ Place every hand and foot yourself, manage your grip, hammer pitons, camp on led
 
 ## What it is
 
-Inspired by *Cairn*. You don't press "climb": you move four limbs one at a time on a rock face, and your body follows.
+You don't press "climb": you move four limbs one at a time on a rock face, and your body follows.
 
 - **Free-limb climbing.** Click a hold and the right hand or foot reaches for it, or drag a limb for precise placement. A position-based body solver keeps you within reach of every hold you hold.
 - **Grip and stamina.** Small holds and overhangs burn your arms; good footholds let you rest. Chalk helps. At zero, your hands let go.

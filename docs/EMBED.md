@@ -7,7 +7,7 @@ Live URL: https://wf5psycho.github.io/veyra/
 ```html
 <section class="project">
   <h2>VEYRA, a 3D climbing game</h2>
-  <p>A Cairn-inspired free-climbing survival game built with AI (Claude Code). Click inside to play.</p>
+  <p>A free-climbing survival game built with AI (Claude Code). Click inside to play.</p>
   <div style="position:relative;width:100%;aspect-ratio:16/9;max-height:80vh">
     <iframe src="https://wf5psycho.github.io/veyra/" title="VEYRA, a climbing game"
             style="position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:12px"

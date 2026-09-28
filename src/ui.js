@@ -241,7 +241,7 @@ export class UI {
           <button data-act="help">How to climb</button>
           <button data-act="settings">Settings</button>
         </div>
-        <p class="foot">Inspired by <i>Cairn</i>. Every hold is a choice. Every ledge is a home.</p>
+        <p class="foot">Every hold is a choice. Every ledge is a home.</p>
       </div>`;
   }
 

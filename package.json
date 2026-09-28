@@ -1,7 +1,7 @@
 {
   "name": "veyra",
   "version": "1.0.0",
-  "description": "VEYRA — a climbing survival game inspired by Cairn. Free-limb climbing, pitons, bivouacs and a little robot friend.",
+  "description": "VEYRA — a free-climbing survival game. Free-limb climbing, pitons, bivouacs and a little robot friend.",
   "private": true,
   "type": "module",
   "scripts": {
