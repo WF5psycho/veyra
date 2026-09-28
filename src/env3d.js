@@ -179,6 +179,41 @@ export class Environment {
       console.warn('Fox model unavailable', e);
     }
     try {
+      // Tobi: KayKit "Barbarian" (CC0) with a beanie and scarf, sitting by the fire with his mug
+      const tobi = await loadGLTF('tobi.glb');
+      if (this.world !== world) return;
+      const obj = tobi.scene;
+      obj.scale.setScalar(52);
+      obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      const bones = {};
+      obj.traverse((o) => { if (o.isBone) bones[o.name] = o; });
+      const wool = new THREE.MeshStandardMaterial({ color: srgb(60, 110, 80), roughness: 0.95 });
+      const knit = new THREE.MeshStandardMaterial({ color: srgb(200, 70, 50), roughness: 0.95 });
+      const beanie = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), wool);
+      beanie.scale.set(0.6, 0.62, 0.64);
+      beanie.position.set(0, 0.5, -0.03);
+      const brim = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.08, 8, 28), wool);
+      brim.rotation.x = Math.PI / 2;
+      brim.position.set(0, 0.5, -0.03);
+      const pom = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), knit);
+      pom.position.set(0, 1.12, -0.05);
+      const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.08, 8, 20), knit);
+      scarf.rotation.x = Math.PI / 2;
+      scarf.position.set(0, 0.55, 0);
+      for (const m of [beanie, brim, pom]) { m.castShadow = true; bones.head.add(m); }
+      scarf.castShadow = true;
+      bones.chest.add(scarf);
+      for (const c of this.tobi.children) c.visible = false;
+      this.tobi.add(obj);
+      obj.scale.divideScalar(this.tobi.scale.x || 1);
+      const mixer = new THREE.AnimationMixer(obj);
+      const sit = tobi.animations.find((a) => a.name === 'Sit_Floor_Idle');
+      if (sit) mixer.clipAction(sit).play();
+      this.tobiRig = { obj, mixer, head: bones.head, look: 0 };
+    } catch (e) {
+      console.warn('Tobi model unavailable', e);
+    }
+    try {
       const bot = await loadGLTF('RobotExpressive.glb');
       if (this.world !== world) return;
       const obj = bot.scene;
@@ -1053,6 +1088,20 @@ export class Environment {
     this.campFire.forEach((f, i) => { f.scale.y = 1 + Math.sin(t * 14 + i * 2) * 0.22; });
     this.fireLight.intensity = (400 + (1 - dl) * 2600) * (0.85 + 0.15 * Math.sin(t * 17));
     // Tobi looks at you when you are close
+    if (this.tobiRig) {
+      const tr = this.tobiRig;
+      tr.mixer.update(dt);
+      const ex = game.explore;
+      let want = Math.sin(t * 0.3) * 0.3;
+      if (ex.active && ex.ledge && ex.ledge.ground && Math.hypot(ex.x - VALLEY.tobi.x, ex.z - VALLEY.tobi.z) < 220) {
+        const T = this.tobi.position;
+        const a = Math.atan2(ex.x - T.x, ex.z + this.zOff(ex.x) - T.z) - this.tobi.rotation.y;
+        want = THREE.MathUtils.clamp(Math.atan2(Math.sin(a), Math.cos(a)), -1.1, 1.1);
+      }
+      tr.look = lerp(tr.look, want, Math.min(1, dt * 3));
+      tr.head.rotation.y += tr.look;
+      tr.head.scale.setScalar(0.72);
+    }
     const head = this.tobi.userData.head;
     const ex = game.explore;
     if (ex.active && ex.ledge && ex.ledge.ground && Math.hypot(ex.x - VALLEY.tobi.x, ex.z - VALLEY.tobi.z) < 200) {

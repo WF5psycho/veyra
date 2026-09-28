@@ -178,6 +178,8 @@ export class AutoClimber {
 
     this.stuck++;
     if (c.state === 'rope') {
+      // rest in the harness before pulling up the rope (that costs grip)
+      if (c.stamina < c.staminaMax * 0.8) return input;
       input.move.y = -1;
       return input;
     }

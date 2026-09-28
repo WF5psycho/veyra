@@ -254,7 +254,7 @@ export const CLIMBOT_TIPS = {
   cold: 'You\'re freezing. Tea and a campfire would help.',
   night: 'It\'s getting dark. Climbing at night is cold and dangerous.',
   loose: 'That hold is crumbling! Move off it!',
-  rope: 'Caught by the rope! W/S to climb or lower, A/D to swing. Click a hold to grab it.',
+  rope: 'Caught by the rope! W/S to climb or lower, A/D to swing. Hang still to rest your arms, then click a hold to grab it.',
   noPitons: 'Out of pitons. Make camp and I\'ll fetch the ones below.',
   flower: 'Ooh, a rare plant! Reach for it to add it to your journal.',
   fauna: 'Look! Click the animal to record a sighting in your journal.',

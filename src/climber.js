@@ -222,6 +222,10 @@ export class Climber {
     if (this.state === 'fall' || this.state === 'mantle' || this.state === 'dead') return { ok: false, reason: 'busy' };
     if (limb.state === 'moving') return { ok: false, reason: 'busy' };
     if (!hold || hold.removed) return { ok: false, reason: 'nohold' };
+    // hanging in the rope with no strength left: rest in the harness first
+    if (this.state === 'rope' && this.stamina < Math.min(20, this.staminaMax * 0.5)) return { ok: false, reason: 'tired' };
+    // from the rope you get back on the wall with a hand; a foot alone cannot hold you
+    if (this.state === 'rope' && !limb.hand) return { ok: false, reason: 'ropehand' };
     if (limb.state === 'grip' && limb.hold === hold) return { ok: false, reason: 'same' };
     let occ = 0;
     for (const l of this.limbs) if (l !== limb && this.limbHold(l) === hold) occ++;
@@ -779,7 +783,8 @@ export class Climber {
     } else if (move.y > 0) {
       this.ropeLen += 70 * dt;
     } else {
-      this.stamina = Math.min(this.staminaMax, this.stamina + 2 * dt);
+      // sitting in the harness is a real rest
+      this.stamina = Math.min(this.staminaMax, this.stamina + 6 * dt);
     }
     const damp = 1 - 0.9 * dt;
     this.vel.x *= damp;

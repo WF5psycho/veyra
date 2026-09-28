@@ -581,7 +581,10 @@ export class Renderer3D {
     }
     const Cx = c.C.x + sx;
     const Cy = c.C.y + sy;
-    const bodyZ = this.surfaceZ(Cx, Cy) + 17;
+    let bodyZ = this.surfaceZ(Cx, Cy) + 17;
+    // standing on a ledge: stay on top of it (near the summit the wall above falls away behind it)
+    const stand = c.standing ? c.standingLedge() : null;
+    if (stand && stand.z3 !== undefined) bodyZ = Math.max(bodyZ, stand.z3 - 4);
     const V = (x, y, z) => new THREE.Vector3(x, -y, z);
     const pelvis = V(Cx, Cy + 16, bodyZ - 1);
     const chest = V(Cx, Cy - 17, bodyZ + 1);
@@ -622,7 +625,7 @@ export class Renderer3D {
     });
     if (this.rig && game.state === 'summit' && c.standing) {
       // celebrate facing the camera
-      this.rig.animate(V(Cx, Cy + BODY.standHeight, bodyZ - 4), 0, { cheer: true, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false }, this.frameDt || 0.016);
+      this.rig.animate(V(Cx, Cy + BODY.standHeight, stand && stand.z3 !== undefined ? stand.z3 + 6 : bodyZ - 4), 0, { cheer: true, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false }, this.frameDt || 0.016);
       return { x: Cx, y: Cy, z: bodyZ };
     }
     (this.rig || this.model).pose({

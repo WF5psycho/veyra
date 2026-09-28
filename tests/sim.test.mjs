@@ -102,6 +102,16 @@ console.log('Rope, pitons, camp and saving');
   const below = c.C.y - piton.y;
   check(c.state === 'rope' || c.state === 'climb' || g.anchors[g.anchors.length - 1] !== piton, `fall caught (state ${c.state}, ${Math.round(below)} below anchor)`);
   check(g.vitals.health > 0, `survived the lead fall (health ${Math.round(g.vitals.health)})`);
+  // hanging in the rope: a foot alone cannot pull you off it (that used to drop you again at once),
+  // and resting in the harness restores grip
+  if (c.state === 'rope') {
+    const hold = g.world.holdsNear(c.C.x, c.C.y, 120).find((h) => !h.ledge);
+    check(!!hold && c.canPlace(c.limbs[2], hold).reason === 'ropehand', 'from the rope a foot alone cannot grab a hold');
+    c.stamina = 5;
+    check(c.canPlace(c.limbs[0], hold).reason === 'tired', 'too tired to grab from the rope with no grip left');
+    for (let i = 0; i < 30 * 5; i++) g.update(1 / 30, {});
+    check(c.stamina >= 30, `resting in the harness restores grip (${Math.round(c.stamina)})`);
+  }
 }
 {
   const g = new Game({ seed: 7, survival: false, hazards: false });
