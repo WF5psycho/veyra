@@ -194,3 +194,24 @@ kbd {
 .diff .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-left: 6px; padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.2); }
 
 .credits { font-size: 11px; color: var(--muted); margin-top: 14px; line-height: 1.5; }
+
+#stambar { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); width: min(420px, 60vw); display: grid; gap: 3px; justify-items: center; }
+.sb-track { position: relative; width: 100%; height: 12px; border-radius: 7px; background: rgba(10, 14, 20, 0.6); border: 1px solid rgba(255, 255, 255, 0.18); overflow: hidden; }
+.sb-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(#a6ec7c, #6fc452); transition: width .15s linear; }
+.sb-fill.low { background: linear-gradient(#f3c74a, #e08a2e); animation: pulse .6s infinite; }
+.sb-parts { position: absolute; inset: 0; display: flex; flex-direction: row-reverse; pointer-events: none; }
+.sb-part { flex: none; }
+.sb-part { height: 100%; opacity: .9; }
+.sb-part.hunger { background: repeating-linear-gradient(45deg, #e1a04a 0 5px, #c4812c 5px 10px); }
+.sb-part.thirst { background: repeating-linear-gradient(45deg, #5fb7ea 0 5px, #3f93c6 5px 10px); }
+.sb-part.cold { background: repeating-linear-gradient(45deg, #bfe6ff 0 5px, #8cc8ef 5px 10px); }
+.sb-part.injury { background: repeating-linear-gradient(45deg, #e8575a 0 5px, #b83a3d 5px 10px); }
+.sb-legend { font-size: 11px; color: #f4e2c0; text-shadow: 0 1px 3px #000; min-height: 13px; }
+#prompts { bottom: 104px; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; margin-bottom: 8px; }
+.badge { display: grid; grid-template-columns: 26px 1fr; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.04); opacity: .55; }
+.badge.on { opacity: 1; background: rgba(242, 163, 58, .12); border: 1px solid rgba(242, 163, 58, .4); }
+.bicon { font-size: 20px; color: var(--accent); text-align: center; }
+.bname { font-weight: 700; font-size: 13px; }
+.btext { font-size: 11px; color: var(--muted); }
+.badgepop { top: 14%; }

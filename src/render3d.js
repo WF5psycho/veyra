@@ -5,11 +5,11 @@ import { ZONES, zoneIndexAt, BODY, FLORA, WORLD_HEIGHT, VALLEY } from './config.
 import { Environment } from './env3d.js';
 import { makeRockTextures, makeGroundTextures, makeSnowTextures } from './tex3d.js';
 import { loadEXR } from './assets.js';
+import { ClimberModel } from './climber3d.js';
 import { fbm2, noise2, clamp, lerp, mulberry32 } from './rng.js';
 import { ik2, zoneBlend } from './render2d.js';
 
 const CH = 360; // chunk height in world units
-const hyFace = (cy) => cy - 34;
 const STEP = 10; // vertex spacing
 
 const col3 = (c) => new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
@@ -94,6 +94,7 @@ export class Renderer3D {
       flag: new THREE.MeshStandardMaterial({ color: 0xd6453d, side: THREE.DoubleSide }),
       hover: new THREE.MeshBasicMaterial({ color: 0x78ffa0, transparent: true, opacity: 0.9 }),
       hoverBad: new THREE.MeshBasicMaterial({ color: 0xff6e5a, transparent: true, opacity: 0.9 }),
+      hoverLunge: new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.95 }),
     };
 
     // Generated surface detail: tileable albedo + normal maps.
@@ -559,59 +560,13 @@ export class Renderer3D {
   }
 
   // ---- climber -------------------------------------------------------------------------------------
-  seg(mat, r) {
-    const m = new THREE.Mesh(this.geo.cap, mat);
-    m.castShadow = true;
-    m.userData.r = r;
-    this.climber.add(m);
-    return m;
-  }
-
   buildClimber() {
-    this.climber = new THREE.Group();
-    this.scene.add(this.climber);
-    const M = this.mats;
-    this.parts = {
-      torso: new THREE.Mesh(this.geo.cap, M.jacket),
-      pack: new THREE.Mesh(this.geo.box, M.pack),
-      mat: new THREE.Mesh(new THREE.CylinderGeometry(4, 4, 24, 10), new THREE.MeshStandardMaterial({ color: 0x5f7f4e })),
-      head: new THREE.Mesh(this.geo.sphere, M.hair),
-      beanie: new THREE.Mesh(new THREE.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), M.beanie),
-      pom: new THREE.Mesh(this.geo.sphere, M.chalk),
-      harness: new THREE.Mesh(new THREE.TorusGeometry(10, 1.6, 6, 16), M.harness),
-      braid: new THREE.Mesh(this.geo.cap, M.hair),
-      face: new THREE.Mesh(this.geo.sphere, M.skin),
-    };
-    for (const p of Object.values(this.parts)) {
-      p.castShadow = true;
-      this.climber.add(p);
-    }
-    this.limbParts = [0, 1, 2, 3].map((i) => {
-      const hand = i < 2;
-      return {
-        upper: this.seg(hand ? M.jacket : M.pants),
-        lower: this.seg(hand ? M.jacket : M.pants),
-        end: (() => {
-          const m = new THREE.Mesh(hand ? this.geo.sphere : this.geo.box, hand ? M.skin : M.boot);
-          m.castShadow = true;
-          this.climber.add(m);
-          return m;
-        })(),
-      };
-    });
+    this.model = new ClimberModel(this.scene);
   }
 
-  placeSeg(m, a, b, r) {
-    const d = new THREE.Vector3().subVectors(b, a);
-    const len = d.length();
-    m.position.copy(a).addScaledVector(d, 0.5);
-    m.scale.set(r, Math.max(0.01, len / 2 - r * 0.2), r);
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
-  }
-
+  // Build the skeleton for the climbing pose from the 2D simulation and pose the model.
   updateClimber(game) {
     const c = game.climber;
-    const P = this.parts;
     let sx = 0;
     let sy = 0;
     if (c.shake > 0 && c.state === 'climb') {
@@ -620,64 +575,49 @@ export class Renderer3D {
     }
     const Cx = c.C.x + sx;
     const Cy = c.C.y + sy;
-    const wallZ = this.surfaceZ(Cx, Cy);
-    const bodyZ = wallZ + 17;
+    const bodyZ = this.surfaceZ(Cx, Cy) + 17;
     const V = (x, y, z) => new THREE.Vector3(x, -y, z);
-    // torso as capsule from hips to shoulders, leaning from the wall a bit at the head
-    P.pack.quaternion.identity();
-    P.face.quaternion.identity();
-    P.face.position.copy(V(Cx, hyFace(Cy), bodyZ - 5));
-    P.face.scale.set(6.4, 7, 4.5);
-    this.placeSeg(P.torso, V(Cx, Cy + 18, bodyZ - 1), V(Cx, Cy - 16, bodyZ + 1), 11);
-    P.torso.scale.x = 12;
-    P.torso.scale.z = 8;
-    P.pack.scale.set(19, 27, 10);
-    P.pack.position.copy(V(Cx, Cy - 2, bodyZ + 11));
-    P.mat.position.copy(V(Cx, Cy - 18, bodyZ + 12));
-    P.mat.rotation.set(0, 0, Math.PI / 2);
-    P.harness.position.copy(V(Cx, Cy + 16, bodyZ));
-    P.harness.rotation.set(Math.PI / 2, 0, 0);
-    P.harness.scale.set(1, 0.7, 1);
-    const hy = Cy - 34;
-    P.head.position.copy(V(Cx, hy, bodyZ + 1));
-    P.head.scale.setScalar(8.5);
-    P.beanie.position.copy(V(Cx, hy + 1.5, bodyZ + 1));
-    P.beanie.scale.setScalar(8.9);
-    P.pom.position.copy(V(Cx, hy - 9.5, bodyZ + 1));
-    P.pom.scale.setScalar(2.6);
-    this.placeSeg(P.braid, V(Cx, hy + 6, bodyZ + 7), V(Cx + 1.5, hy + 18, bodyZ + 9), 1.8);
-    P.pom.material = this.mats.chalk;
-    // limbs
-    c.limbs.forEach((l, i) => {
-      const lp = this.limbParts[i];
+    const pelvis = V(Cx, Cy + 16, bodyZ - 1);
+    const chest = V(Cx, Cy - 17, bodyZ + 1);
+    const U = new THREE.Vector3().subVectors(chest, pelvis).normalize();
+    const F = new THREE.Vector3(0, 0, -1).addScaledVector(U, -U.z).normalize();
+    const R = new THREE.Vector3().crossVectors(F, U).normalize();
+    const head = V(Cx, Cy - 34, bodyZ + 0.5);
+    // look at the hold a limb is reaching for, otherwise up the wall
+    let look = new THREE.Vector3(0, 0.45, -1);
+    const moving = c.limbs.find((l) => l.state === 'moving');
+    const target = moving ? moving.move.hold : c.state === 'fall' ? null : null;
+    if (target) {
+      const tp = V(target.x, target.y, this.surfaceZ(target.x, target.y));
+      look = tp.sub(head).normalize().multiplyScalar(0.7).add(new THREE.Vector3(0, 0, -0.6)).normalize();
+    }
+    if (c.state === 'fall' || c.state === 'rope') look = new THREE.Vector3(0, -0.2, 1);
+    const limbs = c.limbs.map((l) => {
       const r = c.root(l);
       r.x += sx;
       r.y += sy;
       const j = ik2(r.x, r.y, l.end.x, l.end.y, l.l1, l.l2, l.side);
-      const endZ = l.state === 'grip' ? this.surfaceZ(l.end.x, l.end.y) + 3 : bodyZ + (l.hand ? 2 : -2);
+      const grip = l.state === 'grip';
+      const endZ = grip ? this.surfaceZ(l.end.x, l.end.y) + (l.hand ? 4 : 5) : bodyZ + (l.hand ? 2 : -2);
       const rootZ = bodyZ + (l.hand ? 0 : -2);
-      const jz = (rootZ + endZ) / 2 + 7;
-      // clamp end to reach
+      const jz = (rootZ + endZ) / 2 + (l.hand ? 7 : 9);
       const dx = l.end.x - r.x;
       const dy = l.end.y - r.y;
       const d = Math.hypot(dx, dy);
       const max = l.l1 + l.l2;
       const ex = d > max ? r.x + (dx / d) * max : l.end.x;
       const ey = d > max ? r.y + (dy / d) * max : l.end.y;
-      const A = V(r.x, r.y, rootZ);
-      const J = V(j.x, j.y, jz);
-      const E = V(ex, ey, endZ);
-      this.placeSeg(lp.upper, A, J, l.hand ? 2.8 : 3.6);
-      this.placeSeg(lp.lower, J, E, l.hand ? 2.4 : 3.1);
-      if (l.hand) {
-        lp.end.position.copy(E);
-        lp.end.scale.setScalar(3);
-        lp.end.material = c.chalkTime > 0 ? this.mats.chalk : this.mats.skin;
-      } else {
-        lp.end.position.copy(E).add(new THREE.Vector3(l.side * 1.5, -1, 2));
-        lp.end.quaternion.identity();
-        lp.end.scale.set(5.5, 4, 8);
-      }
+      return {
+        hand: l.hand, side: l.side, grip,
+        root: V(r.x, r.y, rootZ), joint: V(j.x, j.y, jz), end: V(ex, ey, endZ),
+        normal: grip ? new THREE.Vector3(0, 0, -1) : new THREE.Vector3(-l.side, 0, 0.3),
+        dir: grip ? new THREE.Vector3(l.side * 0.25, -0.2, -1) : new THREE.Vector3(0, -1, -0.5),
+      };
+    });
+    this.model.pose({
+      pelvis, chest, head, R, U, F, look, limbs,
+      chalk: c.chalkTime > 0, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false,
+      sway: Math.sin(game.stats.playTime * 2) * 0.3 + sx * 0.2,
     });
     return { x: Cx, y: Cy, z: bodyZ };
   }
@@ -939,59 +879,30 @@ export class Renderer3D {
     const bob = Math.abs(Math.sin(ex.phase)) * 1.8 * a;
     const P = new THREE.Vector3(x, y + bob, z);
     const L = (lx, ly, lz) => P.clone().addScaledVector(R, lx).addScaledVector(F, lz).setY(P.y + ly);
-    const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), h);
-    const Pt = this.parts;
     const lean = a * (run > 1 ? 5 : 2);
-    Pt.torso.position.copy(L(0, 79, lean * 0.5));
-    Pt.torso.quaternion.copy(yawQ).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), lean * 0.012));
-    Pt.torso.scale.set(12, 14, 8);
-    Pt.pack.position.copy(L(0, 81, -11 + lean * 0.4));
-    Pt.pack.quaternion.copy(Pt.torso.quaternion);
-    Pt.pack.scale.set(19, 27, 10);
-    Pt.mat.position.copy(L(0, 97, -12 + lean * 0.5));
-    Pt.mat.rotation.set(0, 0, 0);
-    Pt.mat.quaternion.copy(yawQ).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2));
-    Pt.harness.position.copy(L(0, 60, 0));
-    Pt.harness.rotation.set(Math.PI / 2, 0, 0);
-    Pt.harness.scale.set(1, 0.75, 1);
-    Pt.head.position.copy(L(0, 115, lean));
-    Pt.head.scale.setScalar(8.5);
-    Pt.beanie.position.copy(L(0, 116.5, lean));
-    Pt.beanie.scale.setScalar(8.9);
-    Pt.pom.position.copy(L(0, 125.5, lean));
-    Pt.pom.scale.setScalar(2.6);
-    Pt.face.position.copy(L(0, 113.5, lean + 4.5));
-    Pt.face.quaternion.copy(yawQ);
-    Pt.face.scale.set(6.4, 7, 4.5);
-    this.placeSeg(Pt.braid, L(0, 110, lean - 6), L(1.5, 97, lean - 10 - a * Math.sin(ex.phase) * 2), 1.8);
-    c.limbs.forEach((l, i) => {
-      const lp = this.limbParts[i];
+    const U = new THREE.Vector3(0, 1, 0).addScaledVector(F, lean * 0.012).normalize();
+    const limbs = c.limbs.map((l) => {
       const s = l.side;
       const ph = ex.phase + (s > 0 ? Math.PI : 0);
       if (!l.hand) {
         const f = Math.sin(ph) * 16 * a * run;
         const lift = Math.max(0, Math.cos(ph)) * 7 * a;
         const j = ik2(0, 59, f, lift, l.l1, l.l2, 1);
-        const A = L(s * 8, 59, 0);
-        const J = L(s * 8.5, j.y, j.x);
-        const E = L(s * 8, lift + 3, f);
-        this.placeSeg(lp.upper, A, J, 3.6);
-        this.placeSeg(lp.lower, J, E, 3.1);
-        lp.end.position.copy(L(s * 8, lift + 2, f + 2));
-        lp.end.quaternion.copy(yawQ);
-        lp.end.scale.set(5.5, 4, 9);
-      } else {
-        const f = -Math.sin(ph) * 13 * a * run;
-        const j = ik2(0, 99, f, 50 + Math.abs(f) * 0.3, l.l1, l.l2, -1);
-        const A = L(s * 12, 99, lean * 0.8);
-        const J = L(s * 14, j.y, j.x + lean * 0.5);
-        const E = L(s * 13, 50 + Math.abs(f) * 0.3, f + 3);
-        this.placeSeg(lp.upper, A, J, 2.8);
-        this.placeSeg(lp.lower, J, E, 2.4);
-        lp.end.position.copy(E);
-        lp.end.scale.setScalar(3);
-        lp.end.material = this.mats.skin;
+        return { hand: false, side: s, grip: false, root: L(s * 8, 59, 0), joint: L(s * 8.5, j.y, j.x), end: L(s * 8, lift + 5, f), dir: F.clone().addScaledVector(R, s * 0.12) };
       }
+      const f = -Math.sin(ph) * 13 * a * run;
+      const j = ik2(0, 99, f, 52 + Math.abs(f) * 0.3, l.l1, l.l2, -1);
+      return {
+        hand: true, side: s, grip: false,
+        root: L(s * 12, 99, lean * 0.8), joint: L(s * 14, j.y, j.x + lean * 0.5), end: L(s * 13.5, 52 + Math.abs(f) * 0.3, f + 3),
+        normal: R.clone().multiplyScalar(-s), dir: F,
+      };
+    });
+    this.model.pose({
+      pelvis: L(0, 56, lean * 0.3), chest: L(0, 99, lean), head: L(0, 115, lean + 1), R, U, F,
+      look: F.clone().add(new THREE.Vector3(0, -0.12, 0)), limbs,
+      chalk: false, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false,
+      sway: Math.sin(ex.phase) * a * 0.6,
     });
     this.walker = { P, F, R };
     return { x, y: -(y + 81), z, walker: true };
@@ -1150,7 +1061,7 @@ export class Renderer3D {
       if (ui.hoverHold) {
         const h = ui.hoverHold;
         this.hoverRing.visible = true;
-        this.hoverRing.material = ui.hoverOk ? this.mats.hover : this.mats.hoverBad;
+        this.hoverRing.material = ui.hoverOk ? this.mats.hover : ui.hoverLunge ? this.mats.hoverLunge : this.mats.hoverBad;
         this.hoverRing.position.set(h.x, -h.y, this.surfaceZ(h.x, h.y) + 4);
         this.hoverRing.scale.setScalar(Math.max(8, h.r + 3));
       }

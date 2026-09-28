@@ -1,15 +1,16 @@
 // DOM HUD, menus (title, pause, camp, inventory, journal, death, summit) and toasts.
-import { ITEMS, RECIPES, FLORA, FAUNA, RELICS, BIVOUACS, ZONES, EAT_EFFECTS, DIFFICULTY } from './config.js';
+import { ITEMS, RECIPES, FLORA, FAUNA, RELICS, BIVOUACS, ZONES, EAT_EFFECTS, DIFFICULTY, BADGES } from './config.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
 const REJECT_TEXT = {
-  reach: 'Too far to reach.',
+  reach: 'Too far to reach. A yellow ring means you can lunge (Space).',
   support: 'You would fall — keep a hand on the rock.',
   occupied: 'No room on that hold.',
   low: 'Too low for a hand.',
   high: 'Too high for a foot.',
   cross: 'Can\'t cross your limbs that far.',
+  tired: 'Too tired to lunge. Rest first.',
 };
 
 function esc(s) {
@@ -47,6 +48,7 @@ export class UI {
           <button class="qbtn" data-act="inv" title="Backpack (I)"><b>☰</b><span>Pack</span></button>
           <button class="qbtn" data-act="journal" title="Journal (J)"><b id="qjour">0%</b><span>Journal</span></button>
         </div>
+        <div id="stambar"><div class="sb-track"><div class="sb-fill"></div><div class="sb-parts"></div></div><div class="sb-legend"></div></div>
         <div id="prompts"></div>
         <div id="dialogue" class="hidden" data-act="talk"><div class="dname-tag"></div><div class="dline"></div><div class="dnext">E / click ›</div></div>
         <div id="limbhint"></div>
@@ -86,6 +88,28 @@ export class UI {
     this.root.appendChild(el);
     setTimeout(() => el.classList.add('out'), 5200);
     setTimeout(() => el.remove(), 6000);
+  }
+
+  // Badge popups queue up so two badges at once don't overlap.
+  badge(b) {
+    this.badgeQueue = this.badgeQueue || [];
+    this.badgeQueue.push(b);
+    if (this.badgeQueue.length === 1) this.showNextBadge();
+  }
+
+  showNextBadge() {
+    const b = this.badgeQueue[0];
+    if (!b) return;
+    const el = document.createElement('div');
+    el.className = 'discovery badgepop';
+    el.innerHTML = `<div class="dcat">Badge earned</div><div class="dname">★ ${esc(b.name)}</div><div class="dtext">${esc(b.text)}</div>`;
+    this.root.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 3200);
+    setTimeout(() => {
+      el.remove();
+      this.badgeQueue.shift();
+      this.showNextBadge();
+    }, 3900);
   }
 
   reject(reason) {
@@ -132,10 +156,21 @@ export class UI {
     for (const m of this.hud.querySelectorAll('.pmark')) {
       m.classList.toggle('done', !!game.journal.cairns[m.dataset.i] || game.lastBivouac >= Number(m.dataset.i));
     }
+    // PEAK-style stamina bar: green is grip left, coloured chunks are what hunger, thirst, cold and injuries take away
+    const seg = game.staminaSegments();
+    $('.sb-fill', this.hud).style.width = `${Math.max(0, seg.stamina)}%`;
+    $('.sb-fill', this.hud).classList.toggle('low', seg.stamina < 25);
+    const partsKey = seg.parts.map((p) => `${p.kind}:${p.amount.toFixed(1)}`).join('|');
+    if (partsKey !== this.lastParts) {
+      this.lastParts = partsKey;
+      $('.sb-parts', this.hud).innerHTML = seg.parts.map((p) => `<div class="sb-part ${p.kind}" style="width:${p.amount}%"></div>`).join('');
+      $('.sb-legend', this.hud).textContent = seg.parts.filter((p) => p.amount >= 1).map((p) => `−${Math.round(p.amount)} ${p.kind}`).join(' · ');
+    }
     // context prompts
     const c = game.climber;
     const ps = [];
     if (game.state === 'play') {
+      if (controls.hoverLunge) ps.push(['lunge', 'Space', `Lunge for it (${Math.round(controls.hoverLunge.chance * 100)}%)`]);
       if (c.state === 'climb' && c.mantleLedge()) ps.push(['mantle', 'W', 'Climb onto ledge']);
       const it = game.interactTarget();
       if (it && !game.dialogue) ps.push(['interact', 'E', game.interactLabel(it)]);
@@ -201,6 +236,7 @@ export class UI {
         <div class="menu">
           ${cont ? '<button data-act="continue" class="primary">Continue climb</button>' : ''}
           <button data-act="new" class="${cont ? '' : 'primary'}">New climb</button>
+          <button data-act="daily">Today's mountain · ${esc(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</button>
           <button data-act="help">How to climb</button>
           <button data-act="settings">Settings</button>
         </div>
@@ -242,6 +278,8 @@ export class UI {
           It gets cold high up and at night.</p></div>
         <div><h3>Bivouacs</h3>
           <p>Stand on a bivouac ledge and press <b>E</b>: cook, sleep, build a cairn (save) and send <b>Pip</b> the climbot to fetch the pitons you left below.</p></div>
+        <div><h3>Lunge</h3>
+          <p>A hold just out of reach shows a yellow ring: press <b>Space</b> to lunge for it. It costs a lot of grip and can miss, so keep your other hand on something solid.</p></div>
         <div><h3>The valley</h3>
           <p>At the foot of the wall you can walk around: talk to Tobi at base camp (<b>E</b>), pick berries, mushrooms and herbs that grow back every day, and fill your flask at the lake. Click a hold on the wall to walk over and start climbing.</p></div>
         <div><h3>Journal</h3>
@@ -320,6 +358,7 @@ export class UI {
             <button data-act="sleep">Sleep ${game.isNight() || game.time > 17 ? 'until morning' : '(3 hours)'}</button>
             <button data-act="refill">Fill flask at the trickle (${game.inv.water}/${ITEMS.water.max})</button>
             <button data-act="pip" ${below ? '' : 'disabled'}>Send Pip for pitons (${below} below)</button>
+            <button data-act="roast" ${game.inv.marshmallow ? '' : 'disabled'}>Roast a marshmallow (${game.inv.marshmallow || 0})</button>
             <button data-act="cairn" ${game.journal.cairns[lg.bivouac] ? 'disabled' : ''}>${game.journal.cairns[lg.bivouac] ? 'Cairn built' : 'Build a cairn (save)'}</button>
           </div>
           <h3>Cook</h3>
@@ -348,6 +387,8 @@ export class UI {
     return `
       <h2>Climber's Journal <span class="count">${p.pct}%</span></h2>
       <div class="cairns">Cairns: ${cairns}</div>
+      <h3>Badges <span class="count">${Object.keys(game.badges).length}/${BADGES.length}</span></h3>
+      <div class="badges">${BADGES.map((b) => `<div class="badge ${game.badges[b.id] ? 'on' : ''}" title="${esc(b.text)}"><div class="bicon">${game.badges[b.id] ? '★' : '☆'}</div><div><div class="bname">${esc(b.name)}</div><div class="btext">${esc(b.text)}</div></div></div>`).join('')}</div>
       <div class="journal">
         ${sec('Flora', FLORA, 'flora')}
         ${sec('Fauna', FAUNA, 'fauna')}

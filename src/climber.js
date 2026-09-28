@@ -218,7 +218,7 @@ export class Climber {
   }
 
   // Can `limb` be placed on `hold`? Returns the body position that makes it work.
-  canPlace(limb, hold) {
+  canPlace(limb, hold, reachMul = 1) {
     if (this.state === 'fall' || this.state === 'mantle' || this.state === 'dead') return { ok: false, reason: 'busy' };
     if (limb.state === 'moving') return { ok: false, reason: 'busy' };
     if (!hold || hold.removed) return { ok: false, reason: 'nohold' };
@@ -250,7 +250,7 @@ export class Climber {
 
     const cs = onRope ? [] : this.constraintsFor(limb);
     const o = this.rootOffset(limb);
-    cs.push({ ox: o.x, oy: o.y, px: hold.x, py: hold.y, r: limb.reach * 0.97, limb });
+    cs.push({ ox: o.x, oy: o.y, px: hold.x, py: hold.y, r: limb.reach * 0.97 * reachMul, limb });
     const comfort = this.comfortTarget({ limb, hold });
     const start = {
       x: lerp(this.C.x, comfort.x, 0.55),
@@ -320,6 +320,37 @@ export class Climber {
     this.bias.x *= 0.3;
     this.bias.y *= 0.3;
     return chk;
+  }
+
+  // Lunge (PEAK-style dyno): a hand throws for a hold just out of reach. Costs a lot of grip and can miss.
+  canLunge(limb, hold) {
+    if (!limb || !limb.hand || this.state !== 'climb') return null;
+    const normal = this.canPlace(limb, hold);
+    if (normal.ok || normal.reason !== 'reach') return null;
+    const far = this.canPlace(limb, hold, 1.4);
+    if (!far.ok) return null;
+    const q = Math.min(1.2, this.holdQuality(hold));
+    const chance = clamp(0.92 - (1.1 - q) * 0.4 - (this.stamina < 35 ? 0.25 : 0), 0.3, 0.92);
+    return { ...far, chance };
+  }
+
+  lunge(limb, hold, roll) {
+    const chk = this.canLunge(limb, hold);
+    if (!chk) return { ok: false, reason: 'reach' };
+    if (this.stamina < 14) {
+      this.events.push({ type: 'reject', reason: 'tired', limb: limb.id });
+      return { ok: false, reason: 'tired' };
+    }
+    this.stamina = Math.max(0, this.stamina - 16 * this.diff.drain);
+    limb.state = 'moving';
+    limb.hold = null;
+    limb.move = {
+      from: { ...limb.end }, hold, t: 0, dur: 0.3,
+      C0: { ...this.C }, C1: chk.C, walk: false,
+      lunge: { ok: roll < chk.chance },
+    };
+    this.events.push({ type: 'lungeStart', chance: chk.chance });
+    return { ok: true, chance: chk.chance };
   }
 
   lift(limb) {
@@ -579,11 +610,12 @@ export class Climber {
         this.C.y = lerp(m.C0.y, m.C1.y, e);
       }
       if (m.t >= 1) {
-        if (m.hold.removed) {
+        if (m.hold.removed || (m.lunge && !m.lunge.ok)) {
           l.state = 'free';
           l.move = null;
-          this.events.push({ type: 'slip', limb: l.id });
+          this.events.push({ type: m.lunge ? 'lungeMiss' : 'slip', limb: l.id });
         } else {
+          if (m.lunge) this.events.push({ type: 'lungeHit', limb: l.id });
           l.state = 'grip';
           l.hold = m.hold;
           l.end = { x: m.hold.x, y: m.hold.y };

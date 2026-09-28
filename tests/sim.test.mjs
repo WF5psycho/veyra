@@ -157,6 +157,59 @@ console.log('Climbing onto a ledge (regression: pressing W while a hand is still
   check(Number.isFinite(c.C.x) && Number.isFinite(c.C.y), 'an invalid position is recovered');
 }
 
+console.log('PEAK-inspired features: lunge, marshmallows, badges, stamina bar');
+{
+  const g = new Game({ seed: 7, survival: false, hazards: false });
+  const bot = new AutoClimber(g, {});
+  const c = g.climber;
+  // climb a little, then look for a hold that is only reachable with a lunge
+  for (let i = 0; i < 30 * 25; i++) g.update(1 / 30, bot.update(1 / 30));
+  for (let i = 0; i < 30 && c.limbs.some((l) => l.state === 'moving'); i++) g.update(1 / 30, {});
+  let found = null;
+  for (const l of c.limbs.filter((x) => x.hand)) {
+    for (const h of g.world.holdsNear(c.C.x, c.C.y - 60, 140)) {
+      if (h.y > c.C.y - 40 || h.ledge) continue;
+      const chk = c.canLunge(l, h);
+      if (chk) { found = { l, h, chk }; break; }
+    }
+    if (found) break;
+  }
+  check(!!found, 'a hold just out of reach can be lunged for');
+  if (found) {
+    check(!c.canPlace(found.l, found.h).ok, 'that hold is not reachable normally');
+    check(found.chk.chance > 0.25 && found.chk.chance <= 0.92, `lunge success chance is sensible (${Math.round(found.chk.chance * 100)}%)`);
+    c.stamina = 80;
+    const before = c.stamina;
+    const r = g.lunge(found.l, found.h);
+    check(r.ok && c.stamina < before - 10, 'lunging costs a lot of grip');
+    for (let i = 0; i < 30; i++) g.update(1 / 30, {});
+    const hit = found.l.state === 'grip' && found.l.hold === found.h;
+    const missed = found.l.hold !== found.h;
+    check(hit || missed, `lunge resolves as a hit or a miss (${hit ? 'hit' : 'miss'})`);
+    if (hit) check(!!g.badges.dyno, 'landing a lunge earns the Dyno badge');
+  }
+  // marshmallows at camp
+  const cg = new Game({ seed: 7, survival: false, hazards: false });
+  const cb = new AutoClimber(cg, { camp: true });
+  for (let i = 0; i < 30 * 300 && cg.state !== 'camp'; i++) cg.update(1 / 30, cb.update(1 / 30));
+  check(cg.state === 'camp', 'reached a bivouac camp');
+  check(!!cg.badges.camper, 'making camp earns Happy Camper');
+  const mm = cg.inv.marshmallow;
+  const res = cg.roast();
+  check(['golden', 'toasty', 'burnt'].includes(res) && cg.inv.marshmallow === mm - 1, `roasting a marshmallow (${res})`);
+  // stamina bar segments
+  cg.vitals.satiety = 5;
+  cg.vitals.warmth = 10;
+  const seg = cg.staminaSegments();
+  const kinds = seg.parts.map((p) => p.kind);
+  check(kinds.includes('hunger') && kinds.includes('cold'), 'hunger and cold show up as chunks of the stamina bar');
+  check(Math.abs(seg.parts.reduce((a, p) => a + p.amount, 0) - (100 - seg.cap)) < 0.01, 'the chunks add up to the lost stamina');
+  // mountain of the day is deterministic per date
+  const a = new Game({ seed: 20260928, difficulty: 'normal', daily: true });
+  const b = new Game({ seed: 20260928, difficulty: 'normal', daily: true });
+  check(a.world.route.length === b.world.route.length && a.world.route[10].x === b.world.route[10].x, 'the mountain of the day is the same for everyone that day');
+}
+
 console.log('Walking in the valley');
 {
   const g = new Game({ seed: 7, survival: false, hazards: false });

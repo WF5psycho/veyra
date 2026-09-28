@@ -111,6 +111,7 @@ export const ITEMS = {
   pitons: { name: 'Pitons', max: 14, desc: 'Protect falls. Hammer into cracks.' },
   // cooked meals
   porridge: { name: 'Berry porridge', max: 4, desc: 'Food +40, water +10' },
+  marshmallow: { name: 'Marshmallows', max: 8, desc: 'Roast them at a bivouac fire' },
   stew: { name: 'Mountain stew', max: 4, desc: 'Food +55, health +12, warmth +10' },
   tea: { name: 'Herbal tea', max: 4, desc: 'Warmth +45, water +20' },
 };
@@ -135,7 +136,7 @@ export const RECIPES = [
 
 export const START_INVENTORY = {
   water: 4, berries: 2, meat: 1, bandage: 1, chalk: 4, pitons: 6,
-  mushroom: 0, herbs: 0, porridge: 1, stew: 0, tea: 0,
+  mushroom: 0, herbs: 0, porridge: 1, stew: 0, tea: 0, marshmallow: 3,
 };
 
 // Pickups found on the wall. zone weights index into ZONES.
@@ -162,6 +163,22 @@ export const FLORA = [
   { id: 'buttercup', name: 'Glacier Buttercup', zone: 4, text: 'The highest flowering plant ever found. It does not care that you are here.' },
   { id: 'alpenrose', name: 'Alpine Rose', zone: 0, ground: true, text: 'A shrub that turns whole slopes pink in June. Tobi says Mara always wore one on her pack.' },
   { id: 'arnica', name: 'Arnica', zone: 0, ground: true, text: 'Bright yellow and bitter. Every shepherd\'s cure for bruises. You will collect a few of those.' },
+];
+
+// Scout-style badges (inspired by PEAK), kept across all your climbs.
+export const BADGES = [
+  { id: 'camper', name: 'Happy Camper', text: 'Make camp on a bivouac.' },
+  { id: 'hammer', name: 'Hammer Time', text: 'Hammer 10 pitons in one climb.' },
+  { id: 'dyno', name: 'Dyno!', text: 'Land a lunge to a hold out of reach.' },
+  { id: 'golden', name: 'Golden Roast', text: 'Roast a perfect marshmallow.' },
+  { id: 'friends', name: 'Old Friends', text: 'Talk to both Tobi and Kip.' },
+  { id: 'owl', name: 'Night Owl', text: 'Climb 100 m in the dark.' },
+  { id: 'botanist', name: 'Botanist', text: 'Find every flower on Veyra.' },
+  { id: 'spotter', name: 'Spotter', text: 'Record every animal.' },
+  { id: 'summit', name: 'Summit', text: 'Stand on top of Veyra.' },
+  { id: 'clean', name: 'Clean Ascent', text: 'Reach the summit without a single fall.' },
+  { id: 'alpinist', name: 'Alpinist', text: 'Reach the summit on Alpinist.' },
+  { id: 'daily', name: 'Daily Climber', text: 'Summit the mountain of the day.' },
 ];
 
 export const FAUNA = [

@@ -3,11 +3,20 @@ import { World } from './world.js';
 import { Climber } from './climber.js';
 import {
   BODY, BIVOUACS, ITEMS, EAT_EFFECTS, RECIPES, START_INVENTORY, FLORA, FAUNA, RELICS,
-  CLIMBOT_TIPS, ZONES, zoneIndexAt, BASE_ALT, METRES_PER_PX, WORLD_HEIGHT, VALLEY, TOBI_LINES, KIP_LINES, DIFFICULTY,
+  CLIMBOT_TIPS, ZONES, zoneIndexAt, BASE_ALT, METRES_PER_PX, WORLD_HEIGHT, VALLEY, TOBI_LINES, KIP_LINES, DIFFICULTY, BADGES,
 } from './config.js';
 import { clamp, dist, lerp, mulberry32, noise1 } from './rng.js';
 
 const SAVE_KEY = 'veyra-save-v1';
+const BADGE_KEY = 'veyra-badges-v1';
+
+export function loadBadges() {
+  try {
+    return JSON.parse(storageGet(BADGE_KEY) || '{}') || {};
+  } catch (e) {
+    return {};
+  }
+}
 
 export function storageGet(key) {
   try {
@@ -62,6 +71,9 @@ export class Game {
     this.pip = { x: -40, y: -140, vx: 0, vy: 0, mode: 'follow', queue: [], carry: 0, say: null, sayT: 0, blink: 0 };
     this.faunaState = this.world.fauna.map((f) => ({ ...f, seen: false, t: this.rand() * 10, px: f.x, py: f.y, visible: false }));
     this.springCooldown = 0;
+    this.badges = loadBadges();
+    this.nightClimbed = 0;
+    this.lastClimbY = null;
     this.explore = { active: false, x: 0, z: 0, heading: Math.PI, walking: false, phase: 0, speed: 0, pending: null, ledge: null, snapT: 0 };
     this.flat = false; // true in the 2D view: the valley's depth is ignored
     this.talkedTobi = false;
@@ -204,6 +216,7 @@ export class Game {
       this.anchors.push(p);
       this.climber.setAnchor(p);
       this.stats.pitons++;
+      if (this.stats.pitons >= 10) this.awardBadge('hammer');
       this.hammer = null;
       this.emit('pitonPlaced', { quality: p.q });
       this.toast(hm.good >= 2 ? 'Piton set solid. Rope clipped.' : 'Piton set, but it wobbles…', hm.good >= 2 ? 'good' : 'warn');
@@ -212,6 +225,37 @@ export class Game {
 
   cancelHammer() {
     this.hammer = null;
+  }
+
+  // ---- badges (PEAK-style), kept across climbs ------------------------------------------------------
+  awardBadge(id) {
+    if (this.badges[id]) return;
+    const b = BADGES.find((x) => x.id === id);
+    if (!b) return;
+    this.badges[id] = { day: this.day, when: Date.now() };
+    storageSet(BADGE_KEY, JSON.stringify(this.badges));
+    this.emit('badge', { badge: b });
+  }
+
+  // Lunge for a hold that is just out of reach (see Climber.lunge).
+  lunge(limb, hold) {
+    const r = this.climber.lunge(limb, hold, this.rand());
+    this.handleClimberEvents();
+    return r;
+  }
+
+  // What is eating into the stamina bar, for the HUD (like PEAK's bar).
+  staminaSegments() {
+    const v = this.vitals;
+    const f = (x) => (x >= 30 ? 1 : 0.45 + 0.55 * (x / 30));
+    const losses = [
+      ['hunger', 1 - f(v.satiety)], ['thirst', 1 - f(v.hydration)], ['cold', 1 - f(v.warmth)],
+      ['injury', 1 - (0.55 + 0.45 * (v.health / 100))],
+    ];
+    const cap = this.staminaCap();
+    const missing = 100 - cap;
+    const total = losses.reduce((s2, [, l]) => s2 + l, 0) || 1;
+    return { cap, stamina: this.climber.stamina, parts: losses.filter(([, l]) => l > 0.001).map(([k, l]) => ({ kind: k, amount: (missing * l) / total })) };
   }
 
   // ---- camp ----------------------------------------------------------------------------------
@@ -230,6 +274,7 @@ export class Game {
     }
     this.state = 'camp';
     this.camp = { ledge: lg, fire: true };
+    this.awardBadge('camper');
     lg.camped = true;
     // Rope is re-rigged on the bivouac's bolt.
     const bolt = { x: (lg.x1 + lg.x2) / 2, y: lg.y - 4, type: 'bolt', q: 1 };
@@ -271,6 +316,31 @@ export class Game {
     this.inv.water = ITEMS.water.max;
     this.emit('water');
     this.toast('Filled your flask at the trickle behind the bivouac.', 'good');
+  }
+
+  // Roast a marshmallow over the bivouac fire.
+  roast() {
+    if (this.state !== 'camp' || !this.inv.marshmallow) return null;
+    this.inv.marshmallow--;
+    const r = this.rand();
+    let result;
+    if (r < 0.45) {
+      result = 'golden';
+      this.vitals.satiety = clamp(this.vitals.satiety + 28, 0, 100);
+      this.vitals.warmth = clamp(this.vitals.warmth + 12, 0, 100);
+      this.toast('Perfectly golden. Crispy outside, gooey inside.', 'good');
+      this.awardBadge('golden');
+    } else if (r < 0.85) {
+      result = 'toasty';
+      this.vitals.satiety = clamp(this.vitals.satiety + 18, 0, 100);
+      this.toast('Nicely toasted marshmallow.', 'good');
+    } else {
+      result = 'burnt';
+      this.vitals.satiety = clamp(this.vitals.satiety + 8, 0, 100);
+      this.toast('Oops, burnt to a crisp. You eat it anyway.', 'warn');
+    }
+    this.emit('eat', { item: 'marshmallow' });
+    return result;
   }
 
   sleep() {
@@ -329,6 +399,10 @@ export class Game {
   reachSummit() {
     if (this.state === 'summit') return;
     this.state = 'summit';
+    this.awardBadge('summit');
+    if (this.stats.falls === 0) this.awardBadge('clean');
+    if (this.difficulty === 'hard') this.awardBadge('alpinist');
+    if (this.opts.daily) this.awardBadge('daily');
     this.journal.cairns[BIVOUACS.length - 1] = true;
     this.emit('summit');
     this.save();
@@ -476,6 +550,12 @@ export class Game {
     this.updateTips(zone);
 
     this.stats.maxAlt = Math.max(this.stats.maxAlt, this.altitude());
+    // Night Owl: height gained on the wall in the dark
+    if (c.state === 'climb' && !c.standing) {
+      if (this.lastClimbY !== null && this.isNight() && c.C.y < this.lastClimbY) this.nightClimbed += this.lastClimbY - c.C.y;
+      this.lastClimbY = c.C.y;
+      if (this.nightClimbed > 100 / METRES_PER_PX) this.awardBadge('owl');
+    }
     if (this.vitals.health <= 0) this.die(this.deathCause || 'Your body gave out.');
   }
 
@@ -566,6 +646,14 @@ export class Game {
           break;
         case 'stand':
           this.emit('stand', e);
+          break;
+        case 'lungeHit':
+          this.awardBadge('dyno');
+          this.emit('grip', { hand: true });
+          break;
+        case 'lungeMiss':
+          this.toast('Missed the lunge!', 'bad');
+          this.emit('slip', e);
           break;
         default:
           this.emit(e.type, e);
@@ -699,6 +787,8 @@ export class Game {
   discover(cat, id) {
     if (this.journal[cat][id]) return;
     this.journal[cat][id] = { day: this.day, time: this.clockString(), alt: this.altitude() };
+    if (cat === 'flora' && FLORA.every((f) => this.journal.flora[f.id])) this.awardBadge('botanist');
+    if (cat === 'fauna' && FAUNA.every((f) => this.journal.fauna[f.id])) this.awardBadge('spotter');
     const table = cat === 'flora' ? FLORA : cat === 'fauna' ? FAUNA : RELICS;
     const entry = table.find((x) => x.id === id);
     this.emit('discover', { cat, id, entry });
@@ -981,7 +1071,8 @@ export class Game {
       this.inv.pitons = Math.min(ITEMS.pitons.max, this.inv.pitons + 2);
       this.inv.bandage = Math.min(ITEMS.bandage.max, this.inv.bandage + 1);
       this.inv.meat = Math.min(ITEMS.meat.max, this.inv.meat + 1);
-      this.toast('Tobi gave you 2 pitons, a bandage and dried meat.', 'good');
+      this.inv.marshmallow = Math.min(ITEMS.marshmallow.max, (this.inv.marshmallow || 0) + 3);
+      this.toast('Tobi gave you 2 pitons, a bandage, dried meat and a bag of marshmallows.', 'good');
     } else if (this.journal.cairns[BIVOUACS.length - 1]) {
       lines = TOBI_LINES.summit;
     } else if (Object.keys(this.journal.relics).length > 0 && !this.tobiRelicTalk) {
@@ -990,6 +1081,8 @@ export class Game {
     } else {
       lines = [TOBI_LINES.idle[Math.floor(this.rand() * TOBI_LINES.idle.length)]];
     }
+    this.metTobi = true;
+    if (this.kipTalks) this.awardBadge('friends');
     this.dialogue = { name: 'Tobi', lines, i: 0 };
     this.emit('dialogue');
   }
@@ -998,6 +1091,7 @@ export class Game {
     const k = this.kipTalks || 0;
     const lines = KIP_LINES[k === 0 ? 0 : 1 + ((k - 1) % (KIP_LINES.length - 1))];
     this.kipTalks = k + 1;
+    if (this.metTobi || this.talkedTobi) this.awardBadge('friends');
     this.robotCheer = true;
     this.dialogue = { name: 'Kip', lines, i: 0 };
     this.emit('dialogue');

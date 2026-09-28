@@ -115,8 +115,8 @@ class App {
     this.ui.showHUD(false);
   }
 
-  newGame(seed, difficulty = 'normal') {
-    this.game = new Game({ seed: seed ?? 7, difficulty });
+  newGame(seed, difficulty = 'normal', daily = false) {
+    this.game = new Game({ seed: seed ?? 7, difficulty, daily });
     this.demoBot = null;
     this.mode = 'play';
     this.paused = false;
@@ -151,6 +151,14 @@ class App {
     switch (a) {
       case 'new': this.openScreen('difficulty'); break;
       case 'start': this.newGame(7, d.diff); break;
+      case 'daily': {
+        const now = new Date();
+        this.newGame(now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + now.getDate(), 'normal', true);
+        this.ui.toast('The mountain of the day: same mountain for everyone, new tomorrow.', 'good', 4200);
+        break;
+      }
+      case 'roast': g.roast(); this.flushEvents(); this.ui.render(g); break;
+      case 'lunge': this.lungeKey(); break;
       case 'newseed': this.newGame(Math.floor(Math.random() * 1e6), g.difficulty); break;
       case 'continue': this.continueGame(); break;
       case 'help': this.openScreen('help'); break;
@@ -204,6 +212,14 @@ class App {
       case 'retry': this.continueGame(); break;
       default: break;
     }
+  }
+
+  lungeKey() {
+    const g = this.game;
+    const ctl = this.controls;
+    if (!ctl.hoverLunge || !ctl.hoverHold) return;
+    g.lunge(ctl.hoverLunge.limb, ctl.hoverHold);
+    this.flushEvents();
   }
 
   interactKey() {
@@ -354,9 +370,14 @@ class App {
       case 'KeyF': this.pitonKey(); break;
       case 'KeyC': g.chalkUp(); break;
       case 'KeyT': this.action('drink'); break;
-      case 'KeyE': case 'Space':
+      case 'KeyE':
         e.preventDefault();
         this.interactKey();
+        break;
+      case 'Space':
+        e.preventDefault();
+        if (this.controls.hoverLunge) this.lungeKey();
+        else this.interactKey();
         break;
       case 'KeyW': case 'ArrowUp':
         if (c.state === 'climb' && c.mantleLedge()) c.startMantle();
@@ -437,6 +458,7 @@ class App {
     const ctl = this.controls;
     ctl.hoverLimb = null;
     ctl.hoverHold = null;
+    ctl.hoverLunge = null;
     ctl.reachable = null;
     if (this.mode !== 'play' || !ctl.mouse.inside || g.state !== 'play') return;
     const w = this.screenToWorld(ctl.mouse.x, ctl.mouse.y);
@@ -456,6 +478,16 @@ class App {
         ctl.hoverHold = h;
         const limb = chooseLimb(c, h, ctl.limb);
         ctl.hoverOk = c.canPlace(limb, h).ok || (g.explore.active && g.canWalkTo(h));
+        if (!ctl.hoverOk && c.state === 'climb' && !c.standing) {
+          const hands = c.limbs.filter((l) => l.hand && l.hold !== h).sort((a, b) => Math.hypot(a.end.x - h.x, a.end.y - h.y) - Math.hypot(b.end.x - h.x, b.end.y - h.y));
+          for (const l of hands) {
+            const chk = c.canLunge(l, h);
+            if (chk) {
+              ctl.hoverLunge = { limb: l, chance: chk.chance };
+              break;
+            }
+          }
+        }
       }
     }
     if (this.settings.assist && ctl.limb) {
@@ -475,6 +507,7 @@ class App {
       switch (e.type) {
         case 'toast': this.ui.toast(e.text, e.kind); break;
         case 'discover': this.ui.discovery(e); break;
+        case 'badge': this.ui.badge(e.badge); break;
         case 'reject': this.ui.reject(e.reason); break;
         case 'death':
           setTimeout(() => this.ui.open('death', g), 1200);

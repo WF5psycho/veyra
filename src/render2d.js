@@ -791,7 +791,7 @@ export class Renderer2D {
       if (h.type === 'ledge') continue;
       let hi = null;
       if (reachSet && reachSet.has(h)) hi = 'rgba(255,255,255,0.35)';
-      if (ui && ui.hoverHold === h) hi = ui.hoverOk ? 'rgba(120,255,160,0.95)' : 'rgba(255,110,90,0.9)';
+      if (ui && ui.hoverHold === h) hi = ui.hoverOk ? 'rgba(120,255,160,0.95)' : ui.hoverLunge ? 'rgba(255,210,63,0.95)' : 'rgba(255,110,90,0.9)';
       this.drawHold(h, t, hi);
     }
   }
