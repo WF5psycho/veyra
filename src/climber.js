@@ -18,6 +18,7 @@ function ease(t) {
 export class Climber {
   constructor(world, x = 0, groundY = 0) {
     this.world = world;
+    this.diff = world.diff || { drain: 1, regen: 1 };
     this.C = { x, y: groundY - BODY.standHeight };
     this.vel = { x: 0, y: 0 };
     this.state = 'climb'; // climb | mantle | fall | rope | dead
@@ -239,6 +240,8 @@ export class Climber {
       }
       if (!limb.hand && otherHands === 0 && !standing) return { ok: false, reason: 'support' };
     }
+    // Standing on a ledge with no hand on the rock: a foot may only shuffle along the ledge.
+    if (!limb.hand && otherHands === 0 && standing && !hold.ledge) return { ok: false, reason: 'support' };
     if (!limb.hand && otherHands === 0 && !standing && !onRope && limb.state !== 'grip') {
       // placing a foot while hanging from nothing: fine only if a foot already stands on a ledge
       const footOnLedge = others.some((l) => !l.hand && l.hold.ledge);
@@ -656,8 +659,8 @@ export class Climber {
     this.effort = E;
     let rate;
     if (this.standingLedge()) rate = 9;
-    else if (E < 0.45) rate = 22 * (0.45 - E);
-    else rate = -11 * (E - 0.45);
+    else if (E < 0.45) rate = 22 * (0.45 - E) * this.diff.regen;
+    else rate = -11 * (E - 0.45) * this.diff.drain;
     this.staminaRate = rate;
     this.stamina = clamp(this.stamina + rate * dt, 0, this.staminaMax);
     this.shake = clamp((32 - this.stamina) / 32, 0, 1);

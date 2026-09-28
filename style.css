@@ -187,3 +187,8 @@ kbd {
 .dname-tag { font: 700 18px 'Cormorant Garamond', serif; color: var(--accent); }
 .dline { font-size: 15px; line-height: 1.5; margin-top: 2px; }
 .dnext { text-align: right; font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.diffs { width: min(460px, 90vw); }
+.diff { display: grid; gap: 3px; text-align: left; padding: 12px 16px; }
+.diff span { font-size: 13px; opacity: .8; font-weight: 400; }
+.diff .tag { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; margin-left: 6px; padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,.2); }

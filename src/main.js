@@ -115,8 +115,8 @@ class App {
     this.ui.showHUD(false);
   }
 
-  newGame(seed) {
-    this.game = new Game({ seed: seed ?? 7 });
+  newGame(seed, difficulty = 'normal') {
+    this.game = new Game({ seed: seed ?? 7, difficulty });
     this.demoBot = null;
     this.mode = 'play';
     this.paused = false;
@@ -149,8 +149,9 @@ class App {
     this.audio.resume();
     const g = this.game;
     switch (a) {
-      case 'new': this.newGame(7); break;
-      case 'newseed': this.newGame(Math.floor(Math.random() * 1e6)); break;
+      case 'new': this.openScreen('difficulty'); break;
+      case 'start': this.newGame(7, d.diff); break;
+      case 'newseed': this.newGame(Math.floor(Math.random() * 1e6), g.difficulty); break;
       case 'continue': this.continueGame(); break;
       case 'help': this.openScreen('help'); break;
       case 'settings': this.openScreen('settings'); break;

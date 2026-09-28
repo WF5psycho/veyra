@@ -11,11 +11,27 @@ export class AutoClimber {
     this.resting = false;
     this.walkDir = 0;
     this.log = [];
+    this.history = [];
+  }
+
+  // Effort the climber would have with `limb` on `hold` and the body at C.
+  effortIf(limb, hold, C) {
+    const c = this.game.climber;
+    const saved = { state: limb.state, hold: limb.hold, C: c.C };
+    limb.state = 'grip';
+    limb.hold = hold;
+    c.C = C;
+    const E = c.computeEffort();
+    limb.state = saved.state;
+    limb.hold = saved.hold;
+    c.C = saved.C;
+    return E;
   }
 
   bestMove(allowSideways = false) {
     const g = this.game;
     const c = g.climber;
+    const tired = c.stamina < c.staminaMax * 0.5 && c.staminaRate < 1;
     const w = g.world;
     const handsY = c.limbs.filter((l) => l.hand).map((l) => l.end.y);
     const feetY = c.limbs.filter((l) => !l.hand).map((l) => l.end.y);
@@ -30,10 +46,14 @@ export class AutoClimber {
         if (h.loose) continue;
         if (l.state === 'grip' && h === l.hold) continue;
         const gain = (l.state === 'grip' ? l.hold.y : Math.max(l.end.y, c.C.y + (l.hand ? 20 : 60))) - h.y;
-        if (!allowSideways && gain < 8) continue;
-        if (!l.hand && h.y < c.C.y + 5) continue;
+        if (!allowSideways && gain < (tired ? -30 : 8)) continue;
+        if (!l.hand && h.y < c.C.y - 4) continue;
         const rx = w.routeX(h.y);
-        let score = gain + h.q * (l.hand ? 14 : 6) - Math.abs(h.x - rx) * 0.3;
+        let score = gain + h.q * (l.hand ? 14 : 6) - Math.abs(h.x - rx) * 0.3 - Math.max(0, Math.abs(h.x - rx) - 45) * 0.9;
+        if (h.route) score += 18;
+        // Don't shuffle back and forth between the same holds.
+        const recent = this.history.lastIndexOf(`${l.id}:${h.id}`);
+        if (recent >= 0) score -= 40 - (this.history.length - 1 - recent) * 4;
         if (h.ledge && l.hand) score += 25;
         if (l.state !== 'grip') score += 60;
         if (l === this.lastLimb) score -= 18;
@@ -42,6 +62,12 @@ export class AutoClimber {
         if (best && score <= best.score) continue;
         const chk = c.canPlace(l, h);
         if (!chk.ok) continue;
+        if (tired) {
+          // When tired, favour moves that lead to a resting position.
+          const E = this.effortIf(l, h, chk.C);
+          score -= E * 120;
+          if (best && score <= best.score) continue;
+        }
         best = { limb: l, hold: h, score };
       }
     }
@@ -140,8 +166,11 @@ export class AutoClimber {
     let mv = this.bestMove(false);
     if (!mv) mv = this.bestMove(true);
     if (mv) {
+      const from = mv.limb.hold;
       c.place(mv.limb, mv.hold);
       this.lastLimb = mv.limb;
+      if (from) this.history.push(`${mv.limb.id}:${from.id}`);
+      if (this.history.length > 10) this.history.shift();
       this.stuck = 0;
       this.cool = 0.05;
       return input;

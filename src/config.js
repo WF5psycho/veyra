@@ -14,6 +14,25 @@ export const BODY = {
   standHeight: 81, // torso centre above feet when standing
 };
 
+// Difficulty levels. "easy" is the original balance; "normal" is the default.
+export const DIFFICULTY = {
+  easy: {
+    name: 'Easy', blurb: 'The original balance. Plenty of rests, forgiving grip.',
+    drain: 1, regen: 1, restEvery: 3, stepMul: 1, filler: 1, loose: 1, meander: 1,
+    rockfall: 1, survival: 1, fallDamage: 1, slip: 0, start: {},
+  },
+  normal: {
+    name: 'Normal', blurb: 'Fewer rest holds, longer reaches, hungrier and colder. A real climb.',
+    drain: 1.4, regen: 0.75, restEvery: 4, stepMul: 1.08, filler: 0.72, loose: 1.7, meander: 1.35,
+    rockfall: 1.5, survival: 1.3, fallDamage: 1.2, slip: 0, start: { chalk: 3, pitons: 5, porridge: 0 },
+  },
+  hard: {
+    name: 'Alpinist', blurb: 'Tiny holds, big gaps, shaking hands. Every piton counts.',
+    drain: 1.75, regen: 0.6, restEvery: 5, stepMul: 1.14, filler: 0.55, loose: 2.3, meander: 1.6,
+    rockfall: 2, survival: 1.55, fallDamage: 1.4, slip: 0.18, start: { chalk: 2, pitons: 4, porridge: 0, meat: 0, water: 3 },
+  },
+};
+
 export const HOLD_TYPES = {
   jug: { q: 1.25, r: 9, name: 'Jug' },
   crack: { q: 0.95, r: 7, name: 'Crack' },

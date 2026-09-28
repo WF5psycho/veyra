@@ -52,9 +52,10 @@ for (const seed of [1, 7, 42]) {
   const w = g.world;
   check(w.route.length > 150, `seed ${seed}: route has ${w.route.length} holds`);
   let maxGap = 0;
-  for (let i = 1; i < w.route.length; i++) {
-    const a = w.route[i - 1];
-    const b = w.route[i];
+  const line = w.route.filter((h) => !h.stance);
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1];
+    const b = line[i];
     if (w.ledges.some((l) => l.bivouac !== undefined && a.y > l.y && b.y < l.y)) continue;
     maxGap = Math.max(maxGap, Math.hypot(a.x - b.x, a.y - b.y));
   }
@@ -147,6 +148,9 @@ console.log('Climbing onto a ledge (regression: pressing W while a hand is still
   for (let i = 0; i < 60; i++) g.update(1 / 30, {});
   check(Number.isFinite(c.C.x) && Number.isFinite(c.C.y), 'position stays valid after the mantle');
   check(!!c.standingLedge() && c.standingLedge().bivouac === 0, 'standing on the bivouac after climbing onto it');
+  // regression: standing on a ledge, a foot may not step onto the wall without a hand on the rock
+  const wallHold = g.world.holdsNear(c.C.x, c.C.y + 40, 70).find((h) => !h.ledge && h.y < c.standingLedge().y && h.y > c.C.y);
+  if (wallHold) check(!c.canPlace(c.limbs[2], wallHold).ok, 'no foot onto the wall while standing hands-free on a ledge');
   // safety net: an invalid position is recovered instead of freezing the game
   c.C.x = NaN;
   g.update(1 / 30, {});
@@ -203,11 +207,11 @@ console.log('Walking in the valley');
   check(f.interactTarget() === b2, `2D: walking along the ground reaches the bush (x=${Math.round(f.climber.C.x)})`);
 }
 
-console.log('Bot climbs to the summit (no hazards)');
-for (const seed of [7, 1, 42]) {
-  const r = climb(seed);
+console.log('Bot climbs to the summit (no hazards), every difficulty');
+for (const [seed, difficulty] of [[7, 'easy'], [7, 'normal'], [1, 'normal'], [42, 'normal'], [7, 'hard'], [42, 'hard']]) {
+  const r = climb(seed, { difficulty });
   const alt = Math.round(-r.bestY);
-  check(r.game.state === 'summit', `seed ${seed}: summit reached in ${(r.t / 60).toFixed(1)} min sim, falls ${r.stats.falls}, height ${alt}/${WORLD_HEIGHT}`);
+  check(r.game.state === 'summit', `${difficulty} seed ${seed}: summit reached in ${(r.t / 60).toFixed(1)} min sim, falls ${r.stats.falls}, height ${alt}/${WORLD_HEIGHT}`);
 }
 
 console.log('Bot with survival + hazards + camping (informational)');

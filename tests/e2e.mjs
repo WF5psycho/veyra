@@ -46,7 +46,12 @@ try {
   check(await page.isVisible('text=VEYRA'), 'title screen visible');
 
   await page.click('text=New climb');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${outDir}/01b-difficulty.png` });
+  check(await page.isVisible('text=Choose your climb'), 'difficulty menu appears');
+  await page.click('button[data-diff="normal"]');
   await page.waitForTimeout(3000);
+  check(await page.evaluate(() => window.__veyra.game.difficulty === 'normal'), 'Normal difficulty selected');
   await page.screenshot({ path: `${outDir}/02-start.png` });
   check(await page.isVisible('#hud'), 'HUD visible after starting');
   check(await page.evaluate(() => !!(window.__veyra.active3d && window.__veyra.renderer3d)), '3D view is the default');

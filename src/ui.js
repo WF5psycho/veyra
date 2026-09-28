@@ -1,5 +1,5 @@
 // DOM HUD, menus (title, pause, camp, inventory, journal, death, summit) and toasts.
-import { ITEMS, RECIPES, FLORA, FAUNA, RELICS, BIVOUACS, ZONES, EAT_EFFECTS } from './config.js';
+import { ITEMS, RECIPES, FLORA, FAUNA, RELICS, BIVOUACS, ZONES, EAT_EFFECTS, DIFFICULTY } from './config.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -208,6 +208,18 @@ export class UI {
       </div>`;
   }
 
+  screen_difficulty() {
+    const rows = Object.entries(DIFFICULTY).map(([k, d]) => `
+      <button data-act="start" data-diff="${k}" class="diff ${k === 'normal' ? 'primary' : ''}">
+        <b>${esc(d.name)}${k === 'normal' ? ' <span class="tag">recommended</span>' : ''}</b>
+        <span>${esc(d.blurb)}</span>
+      </button>`).join('');
+    return `
+      <h2>Choose your climb</h2>
+      <div class="menu diffs">${rows}</div>
+      <div class="menu row"><button data-act="back">Back</button></div>`;
+  }
+
   screen_help() {
     return `
       <h2>How to climb</h2>
@@ -299,7 +311,7 @@ export class UI {
     }).join('');
     return `
       <h2>${esc(lg.name)}</h2>
-      <p class="sub">Bivouac ${lg.bivouac + 1} of ${BIVOUACS.length - 1} · ${game.altitude()} m · Day ${game.day}, ${game.clockString()}</p>
+      <p class="sub">${esc(DIFFICULTY[game.difficulty].name)} · Bivouac ${lg.bivouac + 1} of ${BIVOUACS.length - 1} · ${game.altitude()} m · Day ${game.day}, ${game.clockString()}</p>
       <div class="camp-grid">
         <div>
           <h3>Camp</h3>
@@ -371,6 +383,7 @@ export class UI {
           <div><b>${s.falls}</b> falls</div>
           <div><b>${s.pitons}</b> pitons hammered</div>
           <div><b>${p.pct}%</b> journal</div>
+          <div><b>${esc(DIFFICULTY[game.difficulty].name)}</b> difficulty</div>
         </div>
         <div class="menu">
           <button data-act="journal">Read the journal</button>

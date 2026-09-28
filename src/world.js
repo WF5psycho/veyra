@@ -1,14 +1,15 @@
 // Procedural mountain: wall outline, holds, cracks, ledges, pickups, collectibles.
 import { mulberry32, noise1, clamp, dist } from './rng.js';
 import {
-  WORLD_HEIGHT, ZONES, zoneIndexAt, BIVOUACS, HOLD_TYPES, PICKUPS, FLORA, FAUNA, RELICS, VALLEY,
+  WORLD_HEIGHT, ZONES, zoneIndexAt, BIVOUACS, HOLD_TYPES, PICKUPS, FLORA, FAUNA, RELICS, VALLEY, DIFFICULTY,
 } from './config.js';
 
 const CELL = 80;
 
 export class World {
-  constructor(seed = 1) {
+  constructor(seed = 1, difficulty = 'easy') {
     this.seed = seed;
+    this.diff = DIFFICULTY[difficulty] || DIFFICULTY.easy;
     this.rand = mulberry32(seed);
     this.holds = [];
     this.grid = new Map();
@@ -39,7 +40,10 @@ export class World {
     const n = noise1(y * 0.0011, this.seed + 7) - 0.5;
     const n2 = noise1(y * 0.004, this.seed + 11) - 0.5;
     const hw = this.halfWidth(y);
-    return clamp(n * 360 + n2 * 80, -hw + 90, hw - 90);
+    const m = this.diff ? this.diff.meander : 1;
+    // The line starts right above base camp and wanders off from there.
+    const start = clamp((-y - 60) / 500, 0, 1);
+    return clamp((n * 360 + n2 * 80) * m * start, -hw + 90, hw - 90);
   }
 
   insideWall(x, y, margin = 0) {
@@ -161,16 +165,30 @@ export class World {
         continue;
       }
       const rx = this.routeX(y);
-      const x = rx + side * (10 + R() * 24);
+      let x = rx + side * (10 + R() * 24);
+      // Keep every move on the line within reach, however much the line wanders.
+      const prev = this.route.filter((p) => !p.stance).pop();
+      if (prev && !this.ledges.some((l) => l.bivouac !== undefined && prev.y > l.y && y < l.y)) {
+        const dy = prev.y - y;
+        const maxDx = Math.sqrt(Math.max(0, 88 * 88 - dy * dy));
+        x = clamp(x, prev.x - maxDx, prev.x + maxDx);
+      }
       // Every third route hold is a good rest hold.
       let type;
       const idx = this.route.length;
-      if (idx % 3 === 0) type = R() < 0.6 ? 'jug' : 'pocket';
+      const rest = idx % this.diff.restEvery === 0;
+      if (rest) type = this.diff.restEvery > 3 || R() < 0.6 ? 'jug' : 'pocket';
       else type = this.pickType(zone, R());
       const h = this.addHold(x, y, type, { route: true });
       this.route.push(h);
+      // On harder levels rests are rarer, but always a real stance: a jug with a good foothold below.
+      if (rest && this.diff.restEvery > 3) {
+        const fx = x - side * 12;
+        const fy = y + 78;
+        if (!this.holdsNear(fx, fy, 16).length) this.addHold(fx, fy, 'jug', { route: true, stance: true });
+      }
       side = -side;
-      y -= zone.step[0] + R() * (zone.step[1] - zone.step[0]);
+      y -= (zone.step[0] + R() * (zone.step[1] - zone.step[0])) * this.diff.stepMul;
     }
 
     // Holds under each ledge lip so it can be reached from below, and along it for feet.
@@ -208,7 +226,7 @@ export class World {
       const yTop = Math.max(z.y1, -WORLD_HEIGHT);
       const yBot = Math.min(z.y0, -20);
       const area = (yBot - yTop) * 1000;
-      const count = Math.floor(area * z.density * 0.42);
+      const count = Math.floor(area * z.density * 0.42 * this.diff.filler);
       for (let i = 0; i < count; i++) {
         const hy = yTop + R() * (yBot - yTop);
         const hw = this.halfWidth(hy);
@@ -216,7 +234,7 @@ export class World {
         if (this.holdsNear(hx, hy, 38).length) continue;
         if (this.ledges.some((l) => hx > l.x1 - 14 && hx < l.x2 + 14 && hy > l.y - 12 && hy < l.y + 26)) continue;
         const type = this.pickType(z, R());
-        const loose = R() < z.loose;
+        const loose = R() < z.loose * this.diff.loose;
         this.addHold(hx, hy, type, loose ? { loose: true } : {});
       }
     }

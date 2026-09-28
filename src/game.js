@@ -3,7 +3,7 @@ import { World } from './world.js';
 import { Climber } from './climber.js';
 import {
   BODY, BIVOUACS, ITEMS, EAT_EFFECTS, RECIPES, START_INVENTORY, FLORA, FAUNA, RELICS,
-  CLIMBOT_TIPS, ZONES, zoneIndexAt, BASE_ALT, METRES_PER_PX, WORLD_HEIGHT, VALLEY, TOBI_LINES,
+  CLIMBOT_TIPS, ZONES, zoneIndexAt, BASE_ALT, METRES_PER_PX, WORLD_HEIGHT, VALLEY, TOBI_LINES, DIFFICULTY,
 } from './config.js';
 import { clamp, dist, lerp, mulberry32, noise1 } from './rng.js';
 
@@ -31,12 +31,14 @@ export function hasSave() {
 
 export class Game {
   constructor(opts = {}) {
-    this.opts = { survival: true, hazards: true, seed: 7, ...opts };
+    this.opts = { survival: true, hazards: true, seed: 7, difficulty: 'normal', ...opts };
     this.seed = this.opts.seed;
-    this.world = new World(this.seed);
+    this.difficulty = DIFFICULTY[this.opts.difficulty] ? this.opts.difficulty : 'normal';
+    this.diff = DIFFICULTY[this.difficulty];
+    this.world = new World(this.seed, this.difficulty);
     this.rand = mulberry32(this.seed * 31 + 5);
     this.events = [];
-    this.inv = { ...START_INVENTORY };
+    this.inv = { ...START_INVENTORY, ...this.diff.start };
     this.vitals = { health: 100, satiety: 80, hydration: 80, warmth: 90 };
     this.time = 7.0; // hours
     this.day = 1;
@@ -343,6 +345,7 @@ export class Game {
   save() {
     const data = {
       seed: this.seed,
+      difficulty: this.difficulty,
       bivouac: this.lastBivouac,
       inv: this.inv,
       vitals: this.vitals,
@@ -369,13 +372,13 @@ export class Game {
     } catch (e) {
       return null;
     }
-    const g = new Game({ ...opts, seed: d.seed });
+    const g = new Game({ ...opts, seed: d.seed, difficulty: d.difficulty || 'easy' });
     g.applySave(d);
     return g;
   }
 
   applySave(d) {
-    this.inv = { ...START_INVENTORY, ...d.inv };
+    this.inv = { ...START_INVENTORY, ...this.diff.start, ...d.inv };
     this.vitals = { ...d.vitals };
     this.vitals.health = Math.max(this.vitals.health, 60);
     this.vitals.satiety = Math.max(this.vitals.satiety, 30);
@@ -464,6 +467,7 @@ export class Game {
 
     if (this.opts.survival) this.updateSurvival(dt, zone);
     if (this.opts.hazards) this.updateRocks(dt, zone);
+    if (this.opts.hazards) this.updateSlips(dt);
     this.updatePickups(dt);
     this.updateFauna(dt);
     this.updateMeadow(dt);
@@ -513,7 +517,7 @@ export class Game {
           break;
         case 'land': {
           const d = e.dist;
-          const dmg = d > 110 ? (d - 110) * 0.14 : 0;
+          const dmg = d > 110 ? (d - 110) * 0.14 * this.diff.fallDamage : 0;
           if (dmg > 0) {
             this.vitals.health -= dmg;
             this.deathCause = `You fell ${Math.round(d * METRES_PER_PX)} m.`;
@@ -543,7 +547,7 @@ export class Game {
             this.emit('pop');
             this.toast('The piton ripped out!', 'bad');
           } else {
-            const dmg = d > 180 ? (d - 180) * 0.05 : 0;
+            const dmg = d > 180 ? (d - 180) * 0.05 * this.diff.fallDamage : 0;
             if (dmg > 0) {
               this.vitals.health -= dmg;
               this.deathCause = 'The rope caught you too hard.';
@@ -575,8 +579,8 @@ export class Game {
     const c = this.climber;
     const exertion = c.state === 'climb' && !c.standing ? 1.25 : 0.8;
     const inCamp = this.state === 'camp';
-    v.satiety = clamp(v.satiety - dt * (100 / 600) * exertion * (inCamp ? 0.5 : 1), 0, 100);
-    v.hydration = clamp(v.hydration - dt * (100 / 480) * exertion * (inCamp ? 0.5 : 1), 0, 100);
+    v.satiety = clamp(v.satiety - dt * (100 / 600) * this.diff.survival * exertion * (inCamp ? 0.5 : 1), 0, 100);
+    v.hydration = clamp(v.hydration - dt * (100 / 480) * this.diff.survival * exertion * (inCamp ? 0.5 : 1), 0, 100);
     const temp = this.temperature();
     let dw = clamp((temp - 3) * 0.045, -0.55, 0.35);
     if (inCamp) dw = 2.5;
@@ -591,10 +595,27 @@ export class Game {
     if (v.warmth < 30) this.tip('cold');
   }
 
+  // Alpinist: tired hands can slip off a hold (never the last one).
+  updateSlips(dt) {
+    const c = this.climber;
+    if (!this.diff.slip || c.state !== 'climb' || c.standing || this.state !== 'play') return;
+    const frac = c.stamina / Math.max(1, c.staminaMax);
+    if (frac > 0.22) return;
+    const hands = c.handsAttached();
+    if (hands.length < 2) return;
+    if (this.rand() < this.diff.slip * (1 - frac / 0.22) * dt * 3) {
+      const l = hands[Math.floor(this.rand() * hands.length)];
+      l.state = 'free';
+      l.hold = null;
+      this.emit('slip', { limb: l.id });
+      this.toast('Your tired hand slips!', 'bad');
+    }
+  }
+
   updateRocks(dt, zone) {
     const c = this.climber;
     if (zone.rockfall > 0 && this.state === 'play' && (c.state === 'climb' && !c.standing)) {
-      this.rockTimer -= dt * zone.rockfall;
+      this.rockTimer -= dt * zone.rockfall * this.diff.rockfall;
       if (this.rockTimer <= 0) {
         this.rockTimer = 45 + this.rand() * 40;
         const x = c.C.x + (this.rand() < 0.5 ? -1 : 1) * (10 + this.rand() * 80);
