@@ -4,8 +4,9 @@ import * as THREE from '../vendor/three.module.min.js';
 import { ZONES, zoneIndexAt, BODY, FLORA, WORLD_HEIGHT, VALLEY } from './config.js';
 import { Environment } from './env3d.js';
 import { makeRockTextures, makeGroundTextures, makeSnowTextures } from './tex3d.js';
-import { loadEXR } from './assets.js';
+import { loadEXR, loadGLTF } from './assets.js';
 import { ClimberModel } from './climber3d.js';
+import { RiggedClimber } from './rigged3d.js';
 import { fbm2, noise2, clamp, lerp, mulberry32 } from './rng.js';
 import { ik2, zoneBlend } from './render2d.js';
 
@@ -562,6 +563,11 @@ export class Renderer3D {
   // ---- climber -------------------------------------------------------------------------------------
   buildClimber() {
     this.model = new ClimberModel(this.scene);
+    // the downloaded character replaces the built-in one once it has loaded
+    loadGLTF('climber.glb').then((gltf) => {
+      this.rig = new RiggedClimber(this.scene, gltf);
+      this.model.group.visible = false;
+    }).catch((e) => console.warn('Climber model unavailable, using the built-in one', e));
   }
 
   // Build the skeleton for the climbing pose from the 2D simulation and pose the model.
@@ -614,7 +620,12 @@ export class Renderer3D {
         dir: grip ? new THREE.Vector3(l.side * 0.25, -0.2, -1) : new THREE.Vector3(0, -1, -0.5),
       };
     });
-    this.model.pose({
+    if (this.rig && game.state === 'summit' && c.standing) {
+      // celebrate facing the camera
+      this.rig.animate(V(Cx, Cy + BODY.standHeight, bodyZ - 4), 0, { cheer: true, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false }, this.frameDt || 0.016);
+      return { x: Cx, y: Cy, z: bodyZ };
+    }
+    (this.rig || this.model).pose({
       pelvis, chest, head, R, U, F, look, limbs,
       chalk: c.chalkTime > 0, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false,
       sway: Math.sin(game.stats.playTime * 2) * 0.3 + sx * 0.2,
@@ -904,6 +915,13 @@ export class Renderer3D {
       chalk: false, night: this.r2.sky ? this.r2.sky.dl < 0.5 : false,
       sway: Math.sin(ex.phase) * a * 0.6,
     });
+    if (this.rig) {
+      this.rig.animate(new THREE.Vector3(x, y, z), h, {
+        speed: ex.walking ? ex.speed : 0,
+        sit: game.state === 'camp' && !ex.walking,
+        night: this.r2.sky ? this.r2.sky.dl < 0.5 : false,
+      }, dt);
+    }
     this.walker = { P, F, R };
     return { x, y: -(y + 81), z, walker: true };
   }
@@ -960,6 +978,7 @@ export class Renderer3D {
   }
 
   render(game, ui, dt) {
+    this.frameDt = dt;
     this.setWorld(game.world);
     const c = game.climber;
     const r2 = this.r2;
