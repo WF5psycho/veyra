@@ -1,0 +1,16 @@
+{
+  "name": "veyra",
+  "version": "1.0.0",
+  "description": "VEYRA — a climbing survival game inspired by Cairn. Free-limb climbing, pitons, bivouacs and a little robot friend.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server . -p 8080 -c-1",
+    "build": "node tools/build.mjs",
+    "test": "node tests/sim.test.mjs",
+    "test:e2e": "node tests/e2e.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
