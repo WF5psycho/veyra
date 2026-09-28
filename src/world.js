@@ -351,6 +351,7 @@ export class World {
     place('flora', 2, (i) => ({ id: ['alpenrose', 'arnica'][i] }));
     this.valley.push({ kind: 'water', x: V.lake.x - V.lake.r * 0.8, z: V.lake.z - V.lake.r * 0.4 });
     this.valley.push({ kind: 'npc', x: V.tobi.x, z: V.tobi.z });
+    this.valley.push({ kind: 'robot', x: V.robot.x, z: V.robot.z });
     this.meadowFauna = FAUNA.filter((f) => f.kind === 'meadow').map((f) => ({ ...f, x: V.lake.x + 260, z: V.lake.z - 120 }));
   }
 

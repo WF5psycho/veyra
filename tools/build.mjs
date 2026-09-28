@@ -1,6 +1,6 @@
 // Bundles the game into one self-contained HTML file: dist/veyra.html (double-click to play).
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -15,12 +15,26 @@ const res = await build({
   write: false,
   target: 'es2020',
   legalComments: 'none',
+  alias: { three: path.join(root, 'vendor/three.module.min.js') },
 });
+
+// Inline the binary assets (models, HDRI lighting) so the page is a single self-contained file.
+const assets = {};
+const walk = (dir, rel = '') => {
+  for (const f of readdirSync(dir)) {
+    const full = path.join(dir, f);
+    const r = rel ? `${rel}/${f}` : f;
+    if (statSync(full).isDirectory()) walk(full, r);
+    else if (/\.(glb|exr)$/.test(f)) assets[r] = readFileSync(full).toString('base64');
+  }
+};
+walk(path.join(root, 'assets'));
 const js = res.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const css = readFileSync(path.join(root, 'style.css'), 'utf8');
 let html = readFileSync(path.join(root, 'index.html'), 'utf8');
 html = html.replace('<link rel="stylesheet" href="style.css">', () => `<style>\n${css}\n</style>`);
-html = html.replace('<script type="module" src="src/main.js"></script>', () => `<script>\n/* three.js (MIT) bundled — see vendor/three.LICENSE */\n${js}\n</script>`);
+html = html.replace(/\s*<script type="importmap">[^<]*<\/script>/, '');
+html = html.replace('<script type="module" src="src/main.js"></script>', () => `<script>window.__VEYRA_ASSETS=${JSON.stringify(assets)};</script>\n<script>\n/* three.js (MIT) bundled — see vendor/three.LICENSE; asset credits in assets/CREDITS.md */\n${js}\n</script>`);
 writeFileSync(path.join(out, 'veyra.html'), html);
 console.log(`dist/veyra.html written (${(html.length / 1024).toFixed(0)} KB)`);
 

@@ -3,7 +3,7 @@ import { World } from './world.js';
 import { Climber } from './climber.js';
 import {
   BODY, BIVOUACS, ITEMS, EAT_EFFECTS, RECIPES, START_INVENTORY, FLORA, FAUNA, RELICS,
-  CLIMBOT_TIPS, ZONES, zoneIndexAt, BASE_ALT, METRES_PER_PX, WORLD_HEIGHT, VALLEY, TOBI_LINES, DIFFICULTY,
+  CLIMBOT_TIPS, ZONES, zoneIndexAt, BASE_ALT, METRES_PER_PX, WORLD_HEIGHT, VALLEY, TOBI_LINES, KIP_LINES, DIFFICULTY,
 } from './config.js';
 import { clamp, dist, lerp, mulberry32, noise1 } from './rng.js';
 
@@ -941,6 +941,7 @@ export class Game {
   interactLabel(v) {
     switch (v.kind) {
       case 'npc': return 'Talk to Tobi';
+      case 'robot': return 'Talk to Kip';
       case 'bush': return 'Pick berries';
       case 'mushroom': return 'Pick mushrooms';
       case 'herbs': return 'Gather herbs';
@@ -961,6 +962,7 @@ export class Game {
     };
     switch (v.kind) {
       case 'npc': this.talk(); break;
+      case 'robot': this.talkKip(); break;
       case 'bush': give('berries', 3); v.picked = this.day; break;
       case 'mushroom': give('mushroom', 1); v.picked = this.day; break;
       case 'herbs': give('herbs', 2); v.picked = this.day; break;
@@ -990,6 +992,16 @@ export class Game {
     }
     this.dialogue = { name: 'Tobi', lines, i: 0 };
     this.emit('dialogue');
+  }
+
+  talkKip() {
+    const k = this.kipTalks || 0;
+    const lines = KIP_LINES[k === 0 ? 0 : 1 + ((k - 1) % (KIP_LINES.length - 1))];
+    this.kipTalks = k + 1;
+    this.robotCheer = true;
+    this.dialogue = { name: 'Kip', lines, i: 0 };
+    this.emit('dialogue');
+    this.emit('pipGo');
   }
 
   advanceDialogue() {

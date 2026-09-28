@@ -490,6 +490,21 @@ export class Renderer2D {
     ctx.fillStyle = '#3c5a46';
     ctx.fillRect(T.x - 9, -44, 18, 3);
     ctx.fillRect(T.x - 6, -48, 12, 5);
+    // Kip, Mara's old robot
+    const K = VALLEY.robot;
+    ctx.fillStyle = '#c9ccd2';
+    ctx.fillRect(K.x - 7, -34, 14, 18);
+    ctx.fillRect(K.x - 5, -16, 4, 16);
+    ctx.fillRect(K.x + 1, -16, 4, 16);
+    ctx.fillStyle = '#e7a23a';
+    ctx.beginPath();
+    ctx.arc(K.x, -41, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1d2733';
+    ctx.fillRect(K.x - 5, -44, 10, 5);
+    ctx.fillStyle = '#7ff0ff';
+    ctx.fillRect(K.x - 3, -43, 2, 2);
+    ctx.fillRect(K.x + 1, -43, 2, 2);
     // forage
     for (const v of game.world.valley) {
       if (v.x < tl.x - 30 || v.x > br.x + 30) continue;

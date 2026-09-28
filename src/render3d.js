@@ -3,6 +3,8 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { ZONES, zoneIndexAt, BODY, FLORA, WORLD_HEIGHT, VALLEY } from './config.js';
 import { Environment } from './env3d.js';
+import { makeRockTextures, makeGroundTextures, makeSnowTextures } from './tex3d.js';
+import { loadEXR } from './assets.js';
 import { fbm2, noise2, clamp, lerp, mulberry32 } from './rng.js';
 import { ik2, zoneBlend } from './render2d.js';
 
@@ -94,6 +96,16 @@ export class Renderer3D {
       hoverBad: new THREE.MeshBasicMaterial({ color: 0xff6e5a, transparent: true, opacity: 0.9 }),
     };
 
+    // Generated surface detail: tileable albedo + normal maps.
+    this.tex = { rock: makeRockTextures(), ground: makeGroundTextures(), snow: makeSnowTextures() };
+    this.mats.rock.map = this.tex.rock.map;
+    this.mats.rock.normalMap = this.tex.rock.normalMap;
+    this.mats.rock.normalScale = new THREE.Vector2(0.9, 0.9);
+    this.mats.holdLight.normalMap = this.tex.rock.normalMap;
+    this.mats.holdLight.normalScale = new THREE.Vector2(0.6, 0.6);
+    this.envMaps = {};
+    this.loadLighting();
+
     this.geo = {
       jug: (() => { const g = new THREE.IcosahedronGeometry(1, 0); g.scale(8, 4.5, 5); return g; })(),
       crimp: new THREE.BoxGeometry(12, 2.2, 4),
@@ -126,6 +138,40 @@ export class Renderer3D {
     this.rockGroup = new THREE.Group();
     this.scene.add(this.rockGroup);
     this.faunaSprites = new Map();
+  }
+
+  // Image-based lighting from CC0 Poly Haven HDRIs (lighting and reflections only; the sky dome stays ours).
+  async loadLighting() {
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      for (const name of ['park', 'dawn', 'sunset', 'night']) {
+        const eq = await loadEXR(`hdri/${name}.exr`);
+        this.envMaps[name] = pmrem.fromEquirectangular(eq).texture;
+        eq.dispose();
+      }
+      pmrem.dispose();
+    } catch (e) {
+      console.warn('HDRI lighting unavailable, using plain lights', e);
+    }
+  }
+
+  // The HDRIs are used for reflections only (water, metal, robots); diffuse light stays ours so the rock keeps its colour.
+  pickEnvironment(game, dl) {
+    const t = game.time;
+    let name = 'park';
+    if (dl < 0.25) name = 'night';
+    else if (dl < 0.85) name = t < 12 ? 'dawn' : 'sunset';
+    const env = this.envMaps[name] || null;
+    if (env !== this.currentEnv) {
+      this.currentEnv = env;
+      const reflective = [this.mats.metal, this.mats.pip, this.mats.visor, this.env.lakeMat, ...(this.env.reflective || [])];
+      for (const m of reflective) {
+        if (!m) continue;
+        m.envMap = env;
+        m.needsUpdate = true;
+      }
+    }
+    return false;
   }
 
   resize(w, h, dpr) {
@@ -227,6 +273,7 @@ export class Renderer3D {
     const cols = xs.length;
     const pos = new Float32Array(cols * (ny + 1) * 3);
     const col = new Float32Array(cols * (ny + 1) * 3);
+    const uvs = new Float32Array(cols * (ny + 1) * 2);
     const E = new Float32Array(cols * (ny + 1));
     for (let j = 0; j <= ny; j++) {
       const sy = y0 + (j * (y1 - y0)) / ny;
@@ -240,6 +287,8 @@ export class Renderer3D {
         pos[k * 3] = sx;
         pos[k * 3 + 1] = -vy;
         pos[k * 3 + 2] = this.surfaceZ(sx, vy) + zOffset;
+        uvs[k * 2] = sx / 170;
+        uvs[k * 2 + 1] = -vy / 170;
         const c = this.rockColor(sx, vy, e);
         col[k * 3] = c.r;
         col[k * 3 + 1] = c.g;
@@ -257,6 +306,7 @@ export class Renderer3D {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     geo.setIndex(idx);
     geo.computeVertexNormals();
     const nrm = geo.attributes.normal;
@@ -397,7 +447,13 @@ export class Renderer3D {
       if (p.getZ(i) > 0) p.setZ(i, p.getZ(i) + (r() - 0.5) * 6);
     }
     geo.computeVertexNormals();
-    const mat = new THREE.MeshStandardMaterial({ color: col3(zb.light).lerp(col3(zb.rock), 0.4), flatShading: true, roughness: 0.95 });
+    const lmap = this.tex.rock.map.clone();
+    const lnrm = this.tex.rock.normalMap.clone();
+    for (const t of [lmap, lnrm]) {
+      t.repeat.set(w / 120, 0.4);
+      t.needsUpdate = true;
+    }
+    const mat = new THREE.MeshStandardMaterial({ color: col3(zb.light).lerp(col3(zb.rock), 0.4), flatShading: true, roughness: 0.95, map: lmap, normalMap: lnrm });
     const m = new THREE.Mesh(geo, mat);
     m.position.set(cx, -l.y - 8, z + 14);
     m.castShadow = true;
@@ -1035,8 +1091,9 @@ export class Renderer3D {
     this.scene.fog.color.copy(fogCol);
     const altK = clamp(focus.y / 9000, 0, 1);
     this.scene.fog.density = (0.00011 - altK * 0.00006) * (1 + (1 - dl) * 1.5);
-    this.hemi.intensity = 0.25 + dl * 0.9;
-    this.hemi.color.copy(col3(sky.top).lerp(new THREE.Color(1, 1, 1), 0.55));
+    const ibl = this.pickEnvironment(game, dl);
+    this.hemi.intensity = (0.25 + dl * 0.9) * (ibl ? 0.8 : 1);
+    this.hemi.color.copy(col3(sky.top).lerp(new THREE.Color(1, 0.97, 0.92), 0.82));
     this.hemi.groundColor.copy(col3([86, 96, 70]).lerp(new THREE.Color(0.02, 0.02, 0.04), 1 - dl));
     const moonlight = dl < 0.35;
     const lightDir = moonlight ? new THREE.Vector3(-sunDir.x, 0.8, 0.6).normalize() : sunDir;

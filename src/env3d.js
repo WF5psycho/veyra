@@ -2,6 +2,7 @@
 // waterfall, base camp, Tobi, forage), clouds and birds.
 import * as THREE from '../vendor/three.module.min.js';
 import { VALLEY, FLORA } from './config.js';
+import { loadGLTF } from './assets.js';
 import { fbm2, noise2, clamp, lerp, mulberry32 } from './rng.js';
 
 const smooth = (t) => t * t * (3 - 2 * t);
@@ -150,6 +151,86 @@ export class Environment {
     this.buildForage();
     this.buildClouds();
     this.buildBirds();
+    this.loadModels();
+  }
+
+  // Animated glTF models: the fox in the meadow and Kip, Mara's old robot, at base camp.
+  async loadModels() {
+    const world = this.world;
+    try {
+      const fox = await loadGLTF('Fox.glb');
+      if (this.world !== world) return;
+      const obj = fox.scene;
+      const box = new THREE.Box3().setFromObject(obj);
+      const len = Math.max(box.max.z - box.min.z, box.max.x - box.min.x);
+      obj.scale.setScalar(72 / len);
+      obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      const holder = new THREE.Group();
+      holder.add(obj);
+      this.root.add(holder);
+      const mixer = new THREE.AnimationMixer(obj);
+      const clip = (n) => fox.animations.find((a) => a.name === n);
+      const acts = {};
+      for (const n of ['Survey', 'Walk', 'Run']) if (clip(n)) acts[n] = mixer.clipAction(clip(n));
+      this.fox = { holder, mixer, acts, current: null };
+      this.playFox('Survey');
+      this.chamois.visible = false;
+    } catch (e) {
+      console.warn('Fox model unavailable', e);
+    }
+    try {
+      const bot = await loadGLTF('RobotExpressive.glb');
+      if (this.world !== world) return;
+      const obj = bot.scene;
+      const box = new THREE.Box3().setFromObject(obj);
+      obj.scale.setScalar(88 / (box.max.y - box.min.y));
+      this.reflective = [];
+      obj.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+          this.reflective.push(o.material);
+          this.r3.currentEnv = undefined; // re-apply reflections to the new materials
+        }
+      });
+      const it = this.world.valley.find((v) => v.kind === 'robot');
+      const z = it.z + this.zOff(it.x);
+      obj.position.set(it.x, this.groundHeight(it.x, z), z);
+      this.root.add(obj);
+      const mixer = new THREE.AnimationMixer(obj);
+      const acts = {};
+      for (const a of bot.animations) acts[a.name] = mixer.clipAction(a);
+      for (const n of ['Wave', 'Yes', 'ThumbsUp', 'Jump']) {
+        if (acts[n]) {
+          acts[n].setLoop(THREE.LoopOnce, 1);
+          acts[n].clampWhenFinished = true;
+        }
+      }
+      mixer.addEventListener('finished', () => this.playRobot(this.robot.idle));
+      this.robot = { obj, mixer, acts, current: null, idle: 'Idle', waved: false };
+      this.playRobot('Idle');
+    } catch (e) {
+      console.warn('Robot model unavailable', e);
+    }
+  }
+
+  playFox(name) {
+    const f = this.fox;
+    if (!f || f.current === name || !f.acts[name]) return;
+    const next = f.acts[name];
+    next.reset().fadeIn(0.3).play();
+    if (f.current) f.acts[f.current].fadeOut(0.3);
+    f.current = name;
+  }
+
+  playRobot(name) {
+    const r = this.robot;
+    if (!r || !r.acts[name]) return;
+    if (r.current === name && r.acts[name].loop !== THREE.LoopOnce) return;
+    const next = r.acts[name];
+    next.reset().fadeIn(0.25).play();
+    if (r.current && r.current !== name) r.acts[r.current].fadeOut(0.25);
+    r.current = name;
   }
 
   // ---- sky ----------------------------------------------------------------------------------------
@@ -343,7 +424,17 @@ export class Environment {
       }
     }
     ng.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-    const mesh = new THREE.Mesh(ng, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
+    const guv = new Float32Array(np.count * 2);
+    for (let i = 0; i < np.count; i++) {
+      guv[i * 2] = np.getX(i) / 90;
+      guv[i * 2 + 1] = np.getZ(i) / 90;
+    }
+    ng.setAttribute('uv', new THREE.BufferAttribute(guv, 2));
+    const gt = this.r3.tex && this.r3.tex.ground;
+    const mesh = new THREE.Mesh(ng, new THREE.MeshStandardMaterial({
+      vertexColors: true, flatShading: true, roughness: 1,
+      map: gt ? gt.map : null, normalMap: gt ? gt.normalMap : null, normalScale: new THREE.Vector2(0.7, 0.7),
+    }));
     mesh.receiveShadow = true;
     this.root.add(mesh);
     this.ground = mesh;
@@ -505,7 +596,7 @@ export class Environment {
   buildWater() {
     const L = VALLEY.lake;
     const lz = L.z + this.zOff(L.x);
-    this.lakeMat = new THREE.MeshPhongMaterial({ color: srgb(52, 104, 128), specular: 0xbfd8ff, shininess: 120, transparent: true, opacity: 0.9 });
+    this.lakeMat = new THREE.MeshStandardMaterial({ color: srgb(34, 78, 98), roughness: 0.16, metalness: 0.15, envMapIntensity: 0.8, transparent: true, opacity: 0.93 });
     const lake = new THREE.Mesh(new THREE.CircleGeometry(L.r + 40, 48), this.lakeMat);
     lake.rotation.x = -Math.PI / 2;
     lake.position.set(L.x, -4, lz);
@@ -768,7 +859,7 @@ export class Environment {
       alpenrose: srgb(230, 90, 140), arnica: srgb(250, 196, 40),
     };
     for (const it of this.world.valley) {
-      if (it.kind === 'npc' || it.kind === 'water') continue;
+      if (it.kind === 'npc' || it.kind === 'water' || it.kind === 'robot') continue;
       const g = new THREE.Group();
       const z = it.z + this.zOff(it.x);
       g.position.set(it.x, this.groundHeight(it.x, z), z);
@@ -975,9 +1066,44 @@ export class Environment {
       f.fruit.visible = it.kind === 'flora' ? !game.journal.flora[it.id] : it.picked !== game.day;
     }
 
-    // chamois
+    // fox (animated model) or the simple stand-in
     const ch = game.meadowFauna && game.meadowFauna[0];
-    if (ch) {
+    if (ch && this.fox) {
+      const z = ch.z + this.zOff(ch.x);
+      const h = this.fox.holder;
+      const prev = h.position.clone();
+      h.position.set(ch.x, this.groundHeight(ch.x, z), z);
+      const speed = prev.distanceTo(h.position) / Math.max(dt, 1e-3);
+      if (speed > 0.5) h.rotation.y = Math.atan2(h.position.x - prev.x, h.position.z - prev.z);
+      this.playFox(speed > 60 ? 'Run' : speed > 4 ? 'Walk' : 'Survey');
+      this.fox.mixer.update(dt);
+    }
+    if (this.robot) {
+      const r = this.robot;
+      const ex = game.explore;
+      const it = this.world.valley.find((v) => v.kind === 'robot');
+      const near = ex.active && ex.ledge && ex.ledge.ground && Math.hypot(ex.x - it.x, ex.z - it.z) < 220;
+      r.idle = game.journal.cairns[7] ? 'Dance' : 'Idle';
+      if (near && !r.waved) {
+        r.waved = true;
+        this.playRobot('Wave');
+      } else if (!near) {
+        r.waved = false;
+        if (r.current !== 'Wave' && r.current !== 'Yes' && r.current !== 'ThumbsUp') this.playRobot(r.idle);
+      }
+      if (game.robotCheer) {
+        game.robotCheer = false;
+        this.playRobot(Math.random() < 0.5 ? 'Yes' : 'ThumbsUp');
+      }
+      // turn to face the player
+      if (near) {
+        const tz = this.zOff(ex.x) + ex.z;
+        const want = Math.atan2(ex.x - r.obj.position.x, tz - r.obj.position.z);
+        r.obj.rotation.y += (Math.atan2(Math.sin(want - r.obj.rotation.y), Math.cos(want - r.obj.rotation.y))) * Math.min(1, dt * 3);
+      }
+      r.mixer.update(dt);
+    }
+    if (ch && !this.fox) {
       const z = ch.z + this.zOff(ch.x);
       this.chamois.position.set(ch.x, this.groundHeight(ch.x, z), z);
       this.chamois.rotation.y = ch.heading || 0;

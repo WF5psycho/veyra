@@ -171,7 +171,7 @@ export const FAUNA = [
   { id: 'ibex', name: 'Ibex', zone: 2, kind: 'ledge', text: 'Standing on a ledge you would need three pitons to reach. Show-off.' },
   { id: 'hare', name: 'Mountain Hare', zone: 3, kind: 'ledge', text: 'Already in its white winter coat. It knows something about the weather.' },
   { id: 'eagle', name: 'Golden Eagle', zone: 4, kind: 'fly', text: 'It circles above the summit. The only one here who climbs without effort.' },
-  { id: 'chamois', name: 'Chamois', zone: 0, kind: 'meadow', text: 'It grazes by the lake at dawn and bolts the moment you look at it. Walk slowly.' },
+  { id: 'chamois', name: 'Red Fox', zone: 0, kind: 'meadow', text: 'It hunts mice along the lake shore and pretends not to see you. It sees you.' },
 ];
 
 // The valley at the foot of the wall, where you can walk around (x along the wall, z away from it).
@@ -179,9 +179,18 @@ export const VALLEY = {
   x0: -1450, x1: 1450, z0: 0, z1: 1050,
   camp: { x: -300, z: 250 },
   tobi: { x: -262, z: 282 },
+  robot: { x: -205, z: 215 },
   lake: { x: 560, z: 640, r: 190 },
   waterfall: { x: 430, top: -640 },
 };
+
+export const KIP_LINES = [
+  ['BEEP. Unit K-1P, expedition support robot. Mara called me Kip.', 'I waited at base camp. She said she would be back by the weekend. That was nine years ago.', 'If you reach the summit, tell her cairn that Kip says hello. BOOP.'],
+  ['My knees are rusty but my sensors are sharp: the red roofs drain your grip. Rest on the big holds.'],
+  ['Pip is my little cousin. Pip is very polite. I was never polite. BEEP.'],
+  ['Weather report: cold at the top, colder at night. Pack tea. Tea is warm. I cannot drink tea.'],
+  ['The fox by the lake steals Tobi\'s socks. I have evidence. I have no one to show it to.'],
+];
 
 export const TOBI_LINES = {
   first: [
